@@ -55,3 +55,8 @@ Este comando inicia el "motor" de análisis que procesa tus archivos. La interfa
 ### ¡Listo!
 
 Ahora puedes abrir tu navegador en `http://localhost:9002` y usar la aplicación. ¡Asegúrate de que ambos servidores (Next.js y Genkit) sigan ejecutándose mientras trabajas!
+
+git add . 
+git commit -m "Actualización del proyecto" 
+git push origin main
+

@@ -1,10 +1,10 @@
-'use client';
-import { useState, useRef, type ChangeEvent, type DragEvent } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { UploadCloud, FileText, X } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { Button } from './ui/button';
+"use client";
+import { useState, useRef, type ChangeEvent, type DragEvent } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { UploadCloud, FileText, X } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { Button } from "./ui/button";
 
 interface FileUploaderProps {
   title: string;
@@ -13,34 +13,42 @@ interface FileUploaderProps {
   recordCount?: number | null;
 }
 
-export function FileUploader({ title, onFileRead, onFileReset, recordCount }: FileUploaderProps) {
+export function FileUploader({
+  title,
+  onFileRead,
+  onFileReset,
+  recordCount,
+}: FileUploaderProps) {
   const [fileName, setFileName] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const readFile = (file: File) => {
     const reader = new FileReader();
-    const isExcel = file.name.toLowerCase().endsWith('.xlsx') || file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-    
+    const isExcel =
+      file.name.toLowerCase().endsWith(".xlsx") ||
+      file.type ===
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
     reader.onload = (e) => {
       const content = e.target?.result;
       if (content) {
         onFileRead(content);
         setFileName(file.name);
       } else {
-        console.error('Failed to read file content');
+        console.error("Failed to read file content");
         handleReset();
       }
     };
     reader.onerror = () => {
-      console.error('Failed to read file');
+      console.error("Failed to read file");
       handleReset();
     };
-    
+
     if (isExcel) {
-        reader.readAsArrayBuffer(file);
+      reader.readAsArrayBuffer(file);
     } else {
-        reader.readAsText(file, 'UTF-8');
+      reader.readAsText(file, "UTF-8");
     }
   };
 
@@ -56,9 +64,17 @@ export function FileUploader({ title, onFileRead, onFileReset, recordCount }: Fi
     e.stopPropagation();
     setIsDragging(false);
     const file = e.dataTransfer.files?.[0];
-    const acceptedTypes = ['text/csv', 'text/plain', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'];
-    const acceptedExtensions = ['.csv', '.tsv', '.txt', '.xlsx'];
-    if (file && (acceptedTypes.includes(file.type) || acceptedExtensions.some(ext => file.name.toLowerCase().endsWith(ext)))) {
+    const acceptedTypes = [
+      "text/csv",
+      "text/plain",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ];
+    const acceptedExtensions = [".csv", ".tsv", ".txt", ".xlsx"];
+    if (
+      file &&
+      (acceptedTypes.includes(file.type) ||
+        acceptedExtensions.some((ext) => file.name.toLowerCase().endsWith(ext)))
+    ) {
       readFile(file);
     }
   };
@@ -84,25 +100,26 @@ export function FileUploader({ title, onFileRead, onFileReset, recordCount }: Fi
     setFileName(null);
     onFileReset();
     if (inputRef.current) {
-      inputRef.current.value = '';
+      inputRef.current.value = "";
     }
   };
-  
+
   // This logic resets the file uploader when the parent tells it to
   // (e.g. when changing client)
   if (recordCount === null && fileName !== null) {
-      handleReset();
+    handleReset();
   }
-
 
   return (
     <Card>
       <CardHeader>
         <CardTitle className="font-headline flex justify-between items-center">
-            <span>{title}</span>
-            {recordCount !== null && recordCount !== undefined && fileName && (
-                <span className="text-sm font-normal text-muted-foreground bg-secondary px-2 py-1 rounded-md">{recordCount} registros</span>
-            )}
+          <span>{title}</span>
+          {recordCount !== null && recordCount !== undefined && fileName && (
+            <span className="text-sm font-normal text-muted-foreground bg-secondary px-2 py-1 rounded-md">
+              {recordCount} registros
+            </span>
+          )}
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -110,9 +127,16 @@ export function FileUploader({ title, onFileRead, onFileReset, recordCount }: Fi
           <div className="flex items-center justify-between rounded-lg border bg-secondary/50 p-4">
             <div className="flex items-center gap-3">
               <FileText className="h-6 w-6 text-primary" />
-              <span className="text-sm font-medium text-foreground truncate">{fileName}</span>
+              <span className="text-sm font-medium text-foreground truncate">
+                {fileName}
+              </span>
             </div>
-            <Button variant="ghost" size="icon" onClick={handleReset} className="h-8 w-8">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleReset}
+              className="h-8 w-8"
+            >
               <X className="h-4 w-4" />
               <span className="sr-only">Quitar archivo</span>
             </Button>
@@ -120,8 +144,10 @@ export function FileUploader({ title, onFileRead, onFileReset, recordCount }: Fi
         ) : (
           <div
             className={cn(
-              'flex flex-col items-center justify-center p-8 border-2 border-dashed rounded-lg cursor-pointer transition-colors',
-              isDragging ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/50'
+              "flex flex-col items-center justify-center p-8 border-2 border-dashed rounded-lg cursor-pointer transition-colors",
+              isDragging
+                ? "border-primary bg-primary/10"
+                : "border-border hover:border-primary/50",
             )}
             onDrop={handleDrop}
             onDragOver={handleDragOver}
@@ -130,8 +156,12 @@ export function FileUploader({ title, onFileRead, onFileReset, recordCount }: Fi
             onClick={() => inputRef.current?.click()}
           >
             <UploadCloud className="h-10 w-10 text-muted-foreground mb-4" />
-            <p className="font-semibold">Arrastra y suelta o haz clic para cargar</p>
-            <p className="text-sm text-muted-foreground">XLSX, CSV, TSV o texto plano</p>
+            <p className="font-semibold">
+              Arrastra y suelta o haz clic para cargar
+            </p>
+            <p className="text-sm text-muted-foreground">
+              XLSX, CSV, TSV o texto plano
+            </p>
             <Input
               ref={inputRef}
               type="file"
