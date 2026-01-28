@@ -81,24 +81,35 @@ export default function Home() {
       }
 
       const data = parseData(content, mapping, numericCols);
+      const recordCount = data.length;
+
+      if (recordCount === 0) {
+        toast({
+          variant: "destructive",
+          title: "Archivo Vacío o Inválido",
+          description:
+            "El archivo no contiene datos o el formato es incorrecto.",
+        });
+        return handleFileReset(type, true);
+      }
 
       if (type === "sales") {
         setSalesData(data);
         toast({
           title: "Éxito",
-          description: `Archivo de facturación cargado con ${data.length} registros.`,
+          description: `Archivo de facturación cargado con ${recordCount} registros.`,
         });
       } else if (type === "inventory") {
         setInventoryData(data);
         toast({
           title: "Éxito",
-          description: `Archivo de inventario cargado con ${data.length} registros.`,
+          description: `Archivo de inventario cargado con ${recordCount} registros.`,
         });
       } else {
         setMinMaxData(data);
         toast({
           title: "Éxito",
-          description: `Archivo de Mín/Máx cargado con ${data.length} registros.`,
+          description: `Archivo de Mín/Máx cargado con ${recordCount} registros.`,
         });
       }
     } catch (error) {
@@ -109,15 +120,25 @@ export default function Home() {
         title: "Error al procesar el archivo",
         description: message,
       });
+      handleFileReset(type, true);
     }
   };
 
-  const handleFileReset = (type: "sales" | "inventory" | "minMax") => {
+  const handleFileReset = (
+    type: "sales" | "inventory" | "minMax",
+    silent = false,
+  ) => {
     if (type === "sales") {
+      if (salesData !== null && !silent)
+        toast({ title: "Archivo de facturación quitado." });
       setSalesData(null);
     } else if (type === "inventory") {
+      if (inventoryData !== null && !silent)
+        toast({ title: "Archivo de inventario quitado." });
       setInventoryData(null);
     } else {
+      if (minMaxData !== null && !silent)
+        toast({ title: "Archivo de Mín/Máx quitado." });
       setMinMaxData(null);
     }
     setSuggestions(null);
@@ -156,6 +177,7 @@ export default function Home() {
   }, [suggestions, sortConfig]);
 
   const handleAnalyzeClick = async () => {
+
     if (analysisMode === "sales") {
       if (!salesData || !inventoryData) {
         toast({
@@ -340,10 +362,7 @@ export default function Home() {
               if (!value) return;
               const newMode = value as "sales" | "levels";
               setAnalysisMode(newMode);
-              // Reset files and results when mode changes
-              setSalesData(null);
-              setInventoryData(null);
-              setMinMaxData(null);
+              // Do not reset files when mode changes to allow switching back and forth
               setSuggestions(null);
               setMissingProducts(null);
             }}
@@ -447,9 +466,9 @@ export default function Home() {
         </div>
 
         <Card className="flex-1">
-          <CardContent className="p-4 md:p-6">
+          <CardContent className="p-4 md:p-6 h-full">
             {isLoading ? (
-              <div className="flex flex-col items-center justify-center gap-4 text-center min-h-[400px]">
+              <div className="flex flex-col items-center justify-center gap-4 text-center min-h-[300px] h-full">
                 <Loader2 className="h-16 w-16 animate-spin text-primary" />
                 <h3 className="font-headline text-2xl font-bold tracking-tight">
                   Generando sugerencias...
@@ -484,23 +503,22 @@ export default function Home() {
                   </div>
                 )}
               </div>
-            ) : inventoryData &&
-              (analysisMode === "sales" ? salesData : minMaxData) ? (
-              <div className="flex flex-col items-center justify-center gap-4 text-center min-h-[400px]">
+            ) : !isAnalyzeDisabled && !isLoading ? (
+              <div className="flex flex-col items-center justify-center gap-4 text-center min-h-[300px] h-full">
                 <FileWarning className="h-16 w-16 text-muted-foreground" />
                 <h3 className="font-headline text-2xl font-bold tracking-tight">
                   {analysisMode === "sales"
-                    ? "No se encontraron acciones requeridas"
+                    ? "Análisis completado sin acciones"
                     : "Todo en orden"}
                 </h3>
                 <p className="text-muted-foreground max-w-md mx-auto">
                   {analysisMode === "sales"
-                    ? "El inventario parece estar alineado con las ventas recientes. No se necesitan surtidos ni se encontraron productos sin stock."
+                    ? "El inventario disponible en picking cubre la demanda de las ventas. No se necesitan surtidos ni se encontraron productos sin stock."
                     : "No se encontraron ubicaciones de picking que necesiten reabastecimiento según sus niveles Mín/Máx."}
                 </p>
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center gap-4 text-center min-h-[400px]">
+              <div className="flex flex-col items-center justify-center gap-4 text-center min-h-[300px] h-full">
                 <Warehouse className="h-16 w-16 text-muted-foreground" />
                 <h3 className="font-headline text-2xl font-bold tracking-tight">
                   Esperando archivos...

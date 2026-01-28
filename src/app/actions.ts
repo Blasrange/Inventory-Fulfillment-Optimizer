@@ -5,79 +5,41 @@ import {
   type AnalysisResult,
 } from "@/ai/flows/sales-analysis";
 import { generateLevelsAnalysis } from "@/ai/flows/levels-analysis";
-import { z } from "zod";
 import * as XLSX from "xlsx";
 import type {
   GenerateRestockSuggestionsOutput,
   MissingProductsOutput,
 } from "@/ai/flows/schemas";
 
-const SalesDataSchema = z.array(
-  z.object({
-    material: z.any().transform(String),
-    descripcion: z.string(),
-    cantidadConfirmada: z.number(),
-  }),
-);
-
-const InventoryDataSchema = z.array(
-  z.object({
-    sku: z.any().transform(String),
-    lpn: z.any().transform(String),
-    descripcion: z.string(),
-    localizacion: z.string(),
-    disponible: z.number(),
-    estado: z.string(),
-    fechaVencimiento: z.string().optional().nullable(),
-    diasFPC: z.number().optional().nullable(),
-  }),
-);
-
-const MinMaxDataSchema = z.array(
-  z.object({
-    sku: z.any().transform(String),
-    lpn: z.any().transform(String),
-    localizacion: z.string(),
-    cantidadMinima: z.number(),
-    cantidadMaxima: z.number(),
-  }),
-);
-
 export async function runAnalysis(
   analysisMode: "sales" | "levels",
-  inventoryData: unknown,
-  salesData: unknown | null,
-  minMaxData: unknown | null,
+  inventoryData: any[] | null,
+  salesData: any[] | null,
+  minMaxData: any[] | null,
 ): Promise<{ data?: AnalysisResult; error?: string }> {
   try {
-    const parsedInventory = InventoryDataSchema.parse(inventoryData);
-
     let analysisResult: AnalysisResult;
+
+    if (!inventoryData) {
+      return { error: "Faltan los datos del inventario." };
+    }
 
     if (analysisMode === "sales") {
       if (!salesData) {
-        return {
-          error:
-            "Para el análisis por ventas, se requiere el archivo de facturación.",
-        };
+        return { error: "Faltan los datos de facturación." };
       }
-      const parsedSales = SalesDataSchema.parse(salesData);
       analysisResult = await generateSalesAnalysis({
-        inventoryData: parsedInventory,
-        salesData: parsedSales,
+        inventoryData: inventoryData,
+        salesData: salesData,
       });
     } else {
       // analysisMode === 'levels'
       if (!minMaxData) {
-        return {
-          error:
-            "Para el análisis por niveles, se requiere el archivo de Mín/Máx.",
-        };
+        return { error: "Faltan los datos de Mín/Máx." };
       }
-      const parsedMinMax = MinMaxDataSchema.parse(minMaxData);
       analysisResult = await generateLevelsAnalysis({
-        inventoryData: parsedInventory,
-        minMaxData: parsedMinMax,
+        inventoryData: inventoryData,
+        minMaxData: minMaxData,
       });
     }
 
@@ -90,16 +52,12 @@ export async function runAnalysis(
 
     return { data: analysisResult };
   } catch (e) {
-    if (e instanceof z.ZodError) {
-      console.error("Zod validation error:", e.errors);
-      return {
-        error: `Error de validación de datos: ${e.errors.map((err) => `${err.path.join(".")} - ${err.message}`).join(", ")}`,
-      };
-    }
     console.error("Error running analysis:", e);
     const errorMessage =
       e instanceof Error ? e.message : "Ocurrió un error inesperado.";
-    return { error: `Ocurrió un error al procesar los datos. ${errorMessage}` };
+    return {
+      error: `Ocurrió un error al procesar los archivos. ${errorMessage}`,
+    };
   }
 }
 
@@ -195,43 +153,105 @@ export async function generateFullReportFile(
 
       const sheetData: any[] = [];
       sortedSuggestions.forEach((s) => {
-        const commonData: { [key: string]: any } = {
-          SKU: s.sku,
-          Descripción: s.descripcion,
-        };
-        if (analysisMode === "levels") {
-          commonData["Destino"] = s.localizacionDestino || "";
-          commonData["LPN Destino"] = s.lpnDestino || "";
-        }
-        if (analysisMode === "sales") {
-          commonData["Cant. Vendida"] = s.cantidadVendida;
-        }
-        commonData["Cant. en Picking"] = s.cantidadDisponible;
-
         if (s.ubicacionesSugeridas && s.ubicacionesSugeridas.length > 0) {
-          s.ubicacionesSugeridas.forEach((u) => {
+          s.ubicacionesSugeridas.forEach((u, index) => {
             const cantASurtir = s.cantidadARestockear > 0 ? u.cantidad : 0;
-            sheetData.push({
-              ...commonData,
-              "Cant. a Surtir": cantASurtir,
-              "Acción / Ubicaciones Origen": `${u.localizacion}${u.lpn ? ` (LPN: ${u.lpn})` : ""} (Cant: ${u.cantidad})`,
-            });
+            const tipoAbastecimiento =
+              cantASurtir > 0
+                ? cantASurtir > 10
+                  ? "Reabastecimiento Pallets Completos"
+                  : "Reabastecimiento de Unidades"
+                : "OK";
+
+            const row: { [key: string]: any } = {
+              SKU: s.sku,
+              Descripción: s.descripcion,
+            };
+
+            if (analysisMode === "levels") {
+              row["Destino"] = s.localizacionDestino || "";
+              row["LPN Destino"] = s.lpnDestino || "";
+            }
+
+            if (analysisMode === "sales") {
+              if (index === 0) {
+                row["Cant. Vendida"] = s.cantidadVendida;
+                row["Cant. en Picking"] = s.cantidadDisponible;
+              } else {
+                row["Cant. Vendida"] = 0;
+                row["Cant. en Picking"] = 0;
+              }
+            } else {
+              row["Cant. en Picking"] = s.cantidadDisponible;
+            }
+
+            row["Cant. a Surtir"] = cantASurtir;
+            row["Acción / Ubicaciones Origen"] =
+              `${u.localizacion}${u.lpn ? ` (LPN: ${u.lpn})` : ""} (Cant: ${u.cantidad})`;
+            row["Tipo de Abastecimiento"] = tipoAbastecimiento;
+
+            sheetData.push(row);
           });
         } else {
-          sheetData.push({
-            ...commonData,
-            "Cant. a Surtir": s.cantidadARestockear,
-            "Acción / Ubicaciones Origen":
-              s.cantidadARestockear > 0 ? "Sin Origen" : "OK",
-          });
+          const cantASurtir = s.cantidadARestockear;
+          const tipoAbastecimiento =
+            cantASurtir > 0
+              ? cantASurtir > 10
+                ? "Reabastecimiento Pallets Completos"
+                : "Reabastecimiento de Unidades"
+              : "OK";
+
+          const row: { [key: string]: any } = {
+            SKU: s.sku,
+            Descripción: s.descripcion,
+          };
+
+          if (analysisMode === "levels") {
+            row["Destino"] = s.localizacionDestino || "";
+            row["LPN Destino"] = s.lpnDestino || "";
+          }
+
+          if (analysisMode === "sales") {
+            row["Cant. Vendida"] = s.cantidadVendida;
+          }
+          row["Cant. en Picking"] = s.cantidadDisponible;
+          row["Cant. a Surtir"] = cantASurtir;
+          row["Acción / Ubicaciones Origen"] =
+            s.cantidadARestockear > 0 ? "Sin Origen" : "OK";
+          row["Tipo de Abastecimiento"] = tipoAbastecimiento;
+          sheetData.push(row);
         }
       });
 
       const ws = XLSX.utils.json_to_sheet(sheetData);
+
+      if (sheetData.length > 0) {
+        const colIndex = Object.keys(sheetData[0]).indexOf(
+          "Tipo de Abastecimiento",
+        );
+
+        if (colIndex !== -1) {
+          sheetData.forEach((_dataRow, rowIndex) => {
+            const cellAddress = XLSX.utils.encode_cell({
+              r: rowIndex + 1,
+              c: colIndex,
+            });
+            const cell = ws[cellAddress];
+
+            if (cell && typeof cell.v === "string") {
+              if (cell.v === "Reabastecimiento Pallets Completos") {
+                cell.s = { fill: { fgColor: { rgb: "C6EFCE" } } };
+              } else if (cell.v === "Reabastecimiento de Unidades") {
+                cell.s = { fill: { fgColor: { rgb: "FFEB9C" } } };
+              }
+            }
+          });
+        }
+      }
       XLSX.utils.book_append_sheet(wb, ws, "Sugerencias de Surtido");
     }
 
-    if (Array.isArray(missingProducts) && missingProducts.length > 0) {
+    if (missingProducts && missingProducts.length > 0) {
       const ws = XLSX.utils.json_to_sheet(missingProducts);
       XLSX.utils.book_append_sheet(wb, ws, "Productos Faltantes");
     }

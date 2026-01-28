@@ -72,11 +72,11 @@ function parseTextData(
 }
 
 function parseExcelData(
-  arrayBuffer: ArrayBuffer,
+  fileBuffer: Buffer,
   columnMapping: Record<string, string[]>,
   numericColumns: string[],
 ): Record<string, any>[] {
-  const workbook = XLSX.read(arrayBuffer, { type: "array", cellDates: true });
+  const workbook = XLSX.read(fileBuffer, { type: "buffer", cellDates: true });
   const sheetName = workbook.SheetNames[0];
   const worksheet = workbook.Sheets[sheetName];
   const jsonData = XLSX.utils.sheet_to_json(worksheet, {
@@ -164,7 +164,7 @@ export function parseData(
   numericColumns: string[],
 ): Record<string, any>[] {
   if (content instanceof ArrayBuffer) {
-    return parseExcelData(content, columnMapping, numericColumns);
+    return parseExcelData(Buffer.from(content), columnMapping, numericColumns);
   } else if (typeof content === "string") {
     return parseTextData(content, columnMapping, numericColumns);
   }
