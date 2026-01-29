@@ -151,24 +151,29 @@ const salesAnalysisFlow = ai.defineFlow(
         let cantidadARestockear = 0;
         const ubicacionesSugeridas: z.infer<typeof UbicacionSugeridaSchema>[] =
           [];
+        let needed = candidate.amountToRestock;
 
         for (const location of sortedReserveLocations) {
-          cantidadARestockear += location.disponible;
+          if (needed <= 0) break;
+
+          let amountToTake;
+          // For high-turnover items, suggest moving the entire LPN/pallet.
+          // For low-turnover (top-ups), suggest moving only the exact quantity needed.
+          if (candidate.isHighTurnover) {
+            amountToTake = location.disponible;
+          } else {
+            amountToTake = Math.min(location.disponible, needed);
+          }
+
+          cantidadARestockear += amountToTake;
           ubicacionesSugeridas.push({
             lpn: location.lpn,
             localizacion: location.localizacion,
             diasFPC: location.diasFPC,
             fechaVencimiento: location.fechaVencimiento,
-            cantidad: location.disponible,
+            cantidad: amountToTake,
           });
-
-          if (candidate.cantidadVendida > 0) {
-            if (cantidadARestockear > candidate.cantidadVendida) {
-              break;
-            }
-          } else {
-            break;
-          }
+          needed -= amountToTake;
         }
 
         return {
@@ -202,6 +207,8 @@ const salesAnalysisFlow = ai.defineFlow(
     const okProducts: z.infer<typeof GenerateRestockSuggestionsOutputSchema> =
       [];
 
+    const THRESHOLD_VENTAS_ALTAS = 10;
+
     for (const sku in salesBySku) {
       const inventory = inventoryBySku[sku];
       const sale = salesBySku[sku];
@@ -216,6 +223,11 @@ const salesAnalysisFlow = ai.defineFlow(
         inventory.totalEnPicking < sale.totalVendida &&
         inventory.totalEnReserva > 0
       ) {
+        const amountToRestock = sale.totalVendida - inventory.totalEnPicking;
+
+        // Determine if it's a high-turnover restock (full pallets) or a small top-up (exact units).
+        const isHighTurnover = amountToRestock >= THRESHOLD_VENTAS_ALTAS;
+
         candidates.push({
           sku: sku,
           descripcion: inventory.descripcion || sale.descripcion,
@@ -224,6 +236,8 @@ const salesAnalysisFlow = ai.defineFlow(
           ubicacionesDeReserva: inventory.reserveLocations.filter(
             (loc) => loc.disponible > 0,
           ),
+          amountToRestock: amountToRestock,
+          isHighTurnover: isHighTurnover, // Pass the flag to the suggestion creator
         });
       } else if (inventory.totalEnPicking >= sale.totalVendida) {
         okProducts.push({
