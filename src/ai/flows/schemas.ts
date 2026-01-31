@@ -18,7 +18,7 @@ export const InventoryDataSchema = z.array(
     estado: z
       .string()
       .describe(
-        'El estado del stock. Solo "STOCK EN ALMACEN LIBRE" es utilizable.',
+        'Estado del stock: solo se considera utilizable el marcado como "Disponible en facturación según el cliente".',
       ),
     fechaVencimiento: z.string().optional().nullable(),
     diasFPC: z.number().optional().nullable(),
@@ -40,54 +40,54 @@ export const UbicacionSugeridaSchema = z.object({
     .string()
     .optional()
     .describe("The License Plate Number (LPN) for the stock at this location."),
-  localizacion: z.string().describe("The location code."),
+  localizacion: z.string().describe("El código de la ubicación."),
   diasFPC: z
     .number()
     .optional()
     .nullable()
-    .describe("Days to expiration for the stock in this location."),
+    .describe("Días para la expiración del stock en esta ubicación."),
   fechaVencimiento: z
     .string()
     .optional()
     .nullable()
-    .describe("Expiration date for the stock in this location."),
-  cantidad: z.number().describe("The quantity of the item at this location."),
+    .describe("Fecha de expiración del stock en esta ubicación."),
+  cantidad: z.number().describe("La cantidad del artículo en esta ubicación."),
 });
 
 export const RestockSuggestionSchema = z.object({
-  sku: z.string().describe("The SKU of the product."),
-  descripcion: z.string().describe("The description of the product."),
+  sku: z.string().describe("El SKU del producto."),
+  descripcion: z.string().describe("La descripción del producto."),
   cantidadVendida: z
     .number()
     .describe(
-      "The total quantity sold recently. This provides context for the replenishment amount.",
+      "La cantidad total vendida recientemente. Esto proporciona contexto para la cantidad de reabastecimiento.",
     ),
   cantidadDisponible: z
     .number()
     .describe(
-      "The total quantity currently available in picking locations. This will be low or zero.",
+      "La cantidad total actualmente disponible en las ubicaciones de picking. Esto será bajo o cero.",
     ),
   cantidadARestockear: z
     .number()
     .describe(
-      "The suggested quantity to move from reserve to picking locations.",
+      "La cantidad sugerida para mover de las ubicaciones de reserva a las de picking.",
     ),
   ubicacionesSugeridas: z
     .array(UbicacionSugeridaSchema)
     .describe(
-      'For items to restock, these are the reserve locations to pull from, ordered by FEFO. For "OK" items, these are the picking locations where stock is currently available.',
+      'Para los artículos a reabastecer, estas son las ubicaciones de reserva de las que se debe extraer, ordenadas por FEFO. Para los artículos "OK", estas son las ubicaciones de picking donde el stock está actualmente disponible.',
     ),
   lpnDestino: z
     .string()
     .optional()
     .nullable()
-    .describe("The destination LPN for the restock, from the Min/Max file."),
+    .describe("El LPN de destino para el reabastecimiento, proveniente del archivo de mínimos/máximos."),
   localizacionDestino: z
     .string()
     .optional()
     .nullable()
     .describe(
-      "The destination location for the restock, from the Min/Max file.",
+      "La ubicación de destino para el reabastecimiento, proveniente del archivo de mínimos/máximos.",
     ),
 });
 
@@ -99,18 +99,18 @@ export type GenerateRestockSuggestionsOutput = z.infer<
 >;
 
 export const MissingProductSchema = z.object({
-  sku: z.string().describe("The SKU of the product."),
-  descripcion: z.string().describe("The description of the product."),
-  cantidadVendida: z.number().describe("The quantity sold."),
+  sku: z.string().describe("El SKU del producto."),
+  descripcion: z.string().describe("La descripción del producto."),
+  cantidadVendida: z.number().describe("La cantidad vendida."),
 });
 export type MissingProductsOutput = z.infer<typeof MissingProductSchema>;
 
 export const AnalysisResultSchema = z.object({
   suggestions: GenerateRestockSuggestionsOutputSchema.describe(
-    "Suggestions for stock replenishment.",
+    "Sugerencias para el reabastecimiento de stock.",
   ),
   missingProducts: z
     .array(MissingProductSchema)
-    .describe("Products that were sold but have no inventory at all."),
+    .describe("Productos que se vendieron pero no tienen inventario en absoluto."),
 });
 export type AnalysisResult = z.infer<typeof AnalysisResultSchema>;

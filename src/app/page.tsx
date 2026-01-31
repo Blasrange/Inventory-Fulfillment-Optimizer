@@ -362,7 +362,7 @@ export default function Home() {
               if (!value) return;
               const newMode = value as "sales" | "levels";
               setAnalysisMode(newMode);
-              // Do not reset files when mode changes to allow switching back and forth
+              // No restablezca los archivos cuando cambie el modo para permitir alternar entre ambos.
               setSuggestions(null);
               setMissingProducts(null);
             }}

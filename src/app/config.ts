@@ -1,11 +1,11 @@
 /**
- * @fileOverview This file contains the column mapping configuration for parsing uploaded files.
- * By centralizing these mappings, you can easily adapt the application to different
- * file formats from various clients without modifying the core UI code.
+ * @fileOverview Este archivo contiene la configuración de mapeo de columnas para analizar archivos subidos.
+ * Al centralizar estos mapeos, puedes adaptar fácilmente la aplicación a diferentes
+ * formatos de archivos de varios clientes sin modificar el código central de la interfaz.
  *
- * For each internal field (e.g., 'material'), provide a list of possible
- * column header names that might appear in client files. The system will
- * search for these names in order and use the first one it finds.
+ * Para cada campo interno (por ejemplo, 'material'), proporciona una lista de posibles
+ * nombres de encabezado de columna que puedan aparecer en los archivos de los clientes. 
+ * El sistema buscará estos nombres en orden y usará el primero que encuentre.
  */
 
 export const salesColumnMapping = {

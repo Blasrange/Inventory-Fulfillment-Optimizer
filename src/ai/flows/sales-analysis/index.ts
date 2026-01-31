@@ -1,6 +1,12 @@
 "use server";
 /**
- * @fileOverview This file defines the Genkit flow for generating restock suggestions based on sales data.
+ * @fileOverview Este archivo contiene la configuración de mapeo de columnas para analizar archivos subidos.
+ * Al centralizar estos mapeos, puedes adaptar fácilmente la aplicación a diferentes
+ * formatos de archivos de varios clientes sin modificar el código central de la interfaz.
+ *
+ * Para cada campo interno (por ejemplo, 'material'), proporciona una lista de posibles
+ * nombres de encabezado de columna que puedan aparecer en los archivos de los clientes. 
+ * El sistema buscará estos nombres en orden y usará el primero que encuentre.
  */
 
 import { ai } from "@/ai/genkit";
@@ -45,9 +51,15 @@ const salesAnalysisFlow = ai.defineFlow(
   async (input) => {
     const { salesData, inventoryData } = input;
 
-    const { VALID_STATUSES, IGNORED_LOCATIONS } = analysisConfig;
+    const {
+      VALID_STATUSES,
+      IGNORED_LOCATIONS,
+      PICKING_LEVELS,
+      RESERVE_LEVELS,
+      ADDITIONAL_RESERVE_LOCATIONS,
+    } = analysisConfig;
 
-    // 1. Filter inventory to only include stock that is free to use and not in the discrepancy location.
+    // 1. Filtrar el inventario para incluir solo el stock que está libre para usar y no está en la ubicación de discrepancia.
     const freeStockInventory = inventoryData.filter(
       (item) =>
         item.estado &&
@@ -55,7 +67,7 @@ const salesAnalysisFlow = ai.defineFlow(
         !IGNORED_LOCATIONS.includes(item.localizacion),
     );
 
-    // 2. Aggregate inventory by SKU, separating picking and reserve locations.
+    // 2. Agregar el inventario por SKU, separando las ubicaciones de picking y reserva.
     const inventoryBySku = freeStockInventory.reduce(
       (acc, item) => {
         const sku = item.sku;
@@ -70,8 +82,16 @@ const salesAnalysisFlow = ai.defineFlow(
         }
 
         const locationStr = String(item.localizacion);
-        const lastPart = locationStr.split("-").pop();
-        if (["5", "10", "15"].includes(lastPart || "")) {
+        const locationUpper = locationStr.toUpperCase();
+        const lastPart = locationStr.split("-").pop() || "";
+
+        const isPicking = PICKING_LEVELS.includes(lastPart);
+        const isReserveByLevel = RESERVE_LEVELS.includes(lastPart);
+        const isReserveByAdditional = ADDITIONAL_RESERVE_LOCATIONS.some(
+          (prefix) => locationUpper.startsWith(prefix.toUpperCase()),
+        );
+
+        if (isPicking) {
           acc[sku].totalEnPicking += item.disponible;
           acc[sku].pickingLocations.push({
             lpn: item.lpn,
@@ -80,9 +100,7 @@ const salesAnalysisFlow = ai.defineFlow(
             fechaVencimiento: item.fechaVencimiento,
             diasFPC: item.diasFPC,
           });
-        } else if (
-          ["20", "30", "40", "50", "60", "70"].includes(lastPart || "")
-        ) {
+        } else if (isReserveByLevel || isReserveByAdditional) {
           acc[sku].totalEnReserva += item.disponible;
           acc[sku].reserveLocations.push({
             lpn: item.lpn,
@@ -157,8 +175,8 @@ const salesAnalysisFlow = ai.defineFlow(
           if (needed <= 0) break;
 
           let amountToTake;
-          // For high-turnover items, suggest moving the entire LPN/pallet.
-          // For low-turnover (top-ups), suggest moving only the exact quantity needed.
+          // Para artículos de alta rotación, sugerir mover todo el LPN/pallet.
+          // Para artículos de baja rotación (reposición), sugerir mover solo la cantidad exacta necesaria.
           if (candidate.isHighTurnover) {
             amountToTake = location.disponible;
           } else {
@@ -225,7 +243,7 @@ const salesAnalysisFlow = ai.defineFlow(
       ) {
         const amountToRestock = sale.totalVendida - inventory.totalEnPicking;
 
-        // Determine if it's a high-turnover restock (full pallets) or a small top-up (exact units).
+        // Determinar si es una reposición de alta rotación (pallets completos) o una reposición pequeña (unidades exactas).
         const isHighTurnover = amountToRestock >= THRESHOLD_VENTAS_ALTAS;
 
         candidates.push({
@@ -237,7 +255,7 @@ const salesAnalysisFlow = ai.defineFlow(
             (loc) => loc.disponible > 0,
           ),
           amountToRestock: amountToRestock,
-          isHighTurnover: isHighTurnover, // Pass the flag to the suggestion creator
+          isHighTurnover: isHighTurnover, // Pasar la bandera al creador de sugerencias
         });
       } else if (inventory.totalEnPicking >= sale.totalVendida) {
         okProducts.push({

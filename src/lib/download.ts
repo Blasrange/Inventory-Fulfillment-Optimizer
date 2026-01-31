@@ -7,7 +7,7 @@ export function downloadFile(
 ) {
   const linkSource = `data:${mimeType};base64,${base64Data}`;
   const downloadLink = document.createElement("a");
-  document.body.appendChild(downloadLink); // Required for Firefox
+  document.body.appendChild(downloadLink);
   downloadLink.href = linkSource;
   downloadLink.download = fileName;
   downloadLink.click();

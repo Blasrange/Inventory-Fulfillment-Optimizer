@@ -130,7 +130,7 @@ export function ResultsTable({
                 ) : (
                   <div className="flex flex-wrap items-center gap-1">
                     <Badge variant="outline">OK</Badge>
-                    {/* For OK items, show picking locations where stock is */}
+                    {/* Para los artículos OK, muestre las ubicaciones de recolección donde se encuentran las existencias */}
                     {item.ubicacionesSugeridas.map((ubicacion, uIndex) => (
                       <Badge
                         key={`${ubicacion.lpn || ubicacion.localizacion}-${uIndex}`}

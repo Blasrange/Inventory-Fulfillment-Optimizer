@@ -104,8 +104,7 @@ export function FileUploader({
     }
   };
 
-  // This logic resets the file uploader when the parent tells it to
-  // (e.g. when changing client)
+  // Esta lógica reinicia el cargador de archivos cuando el padre lo indica (por ejemplo, al cambiar de cliente)
   if (recordCount === null && fileName !== null) {
     handleReset();
   }

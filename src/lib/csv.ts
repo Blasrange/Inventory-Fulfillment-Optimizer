@@ -53,7 +53,7 @@ function parseTextData(
           let value: any = values[index].trim();
 
           if (numericColumns.includes(jsonKey)) {
-            // Handles formats like "1.234,56" -> 1234.56 and "1234.56" -> 1234.56
+            // Maneja formatos como "1.234,56" -> 1234.56 y "1234.56" -> 1234.56
             value = parseFloat(value.replace(/\./g, "").replace(",", ".")) || 0;
           }
           record[jsonKey] = value;
@@ -62,7 +62,7 @@ function parseTextData(
       return record;
     })
     .filter((record) => {
-      // Filter out rows that are essentially empty
+      // Filtra filas que están esencialmente vacías
       return Object.values(record).some(
         (val) => val !== "" && val !== 0 && val !== null && val !== undefined,
       );
