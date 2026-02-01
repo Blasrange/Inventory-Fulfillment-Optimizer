@@ -1,12 +1,6 @@
 "use server";
 /**
- * @fileOverview Este archivo contiene la configuración de mapeo de columnas para analizar archivos subidos.
- * Al centralizar estos mapeos, puedes adaptar fácilmente la aplicación a diferentes
- * formatos de archivos de varios clientes sin modificar el código central de la interfaz.
- *
- * Para cada campo interno (por ejemplo, 'material'), proporciona una lista de posibles
- * nombres de encabezado de columna que puedan aparecer en los archivos de los clientes. 
- * El sistema buscará estos nombres en orden y usará el primero que encuentre.
+ * @fileOverview This file defines the Genkit flow for generating restock suggestions based on sales data.
  */
 
 import { ai } from "@/ai/genkit";
@@ -15,7 +9,7 @@ import {
   SalesDataSchema,
   InventoryDataSchema,
   AnalysisResultSchema,
-  GenerateRestockSuggestionsOutputSchema,
+  RestockSuggestionSchema,
   MissingProductSchema,
   UbicacionSugeridaSchema,
 } from "../schemas";
@@ -29,9 +23,6 @@ const GenerateSalesAnalysisInputSchema = z.object({
 });
 export type GenerateSalesAnalysisInput = z.infer<
   typeof GenerateSalesAnalysisInputSchema
->;
-export type GenerateRestockSuggestionsOutput = z.infer<
-  typeof GenerateRestockSuggestionsOutputSchema
 >;
 export type MissingProductsOutput = z.infer<typeof MissingProductSchema>;
 export type AnalysisResult = z.infer<typeof AnalysisResultSchema>;
@@ -59,7 +50,7 @@ const salesAnalysisFlow = ai.defineFlow(
       ADDITIONAL_RESERVE_LOCATIONS,
     } = analysisConfig;
 
-    // 1. Filtrar el inventario para incluir solo el stock que está libre para usar y no está en la ubicación de discrepancia.
+    // 1. Filter inventory to only include stock that is free to use and not in the discrepancy location.
     const freeStockInventory = inventoryData.filter(
       (item) =>
         item.estado &&
@@ -67,17 +58,19 @@ const salesAnalysisFlow = ai.defineFlow(
         !IGNORED_LOCATIONS.includes(item.localizacion),
     );
 
-    // 2. Agregar el inventario por SKU, separando las ubicaciones de picking y reserva.
+    // 2. Aggregate inventory by SKU, separating picking and different types of reserve locations.
     const inventoryBySku = freeStockInventory.reduce(
       (acc, item) => {
-        const sku = item.sku;
+        const sku = item.sku.toUpperCase();
         if (!acc[sku]) {
           acc[sku] = {
             descripcion: item.descripcion,
             totalEnPicking: 0,
-            totalEnReserva: 0,
+            totalPrimaryReserve: 0,
+            totalAdditionalReserve: 0,
             pickingLocations: [],
-            reserveLocations: [],
+            primaryReserveLocations: [],
+            additionalReserveLocations: [],
           };
         }
 
@@ -91,24 +84,23 @@ const salesAnalysisFlow = ai.defineFlow(
           (prefix) => locationUpper.startsWith(prefix.toUpperCase()),
         );
 
+        const locationData = {
+          lpn: item.lpn,
+          localizacion: locationStr,
+          disponible: item.disponible,
+          fechaVencimiento: item.fechaVencimiento,
+          diasFPC: item.diasFPC,
+        };
+
         if (isPicking) {
           acc[sku].totalEnPicking += item.disponible;
-          acc[sku].pickingLocations.push({
-            lpn: item.lpn,
-            localizacion: locationStr,
-            disponible: item.disponible,
-            fechaVencimiento: item.fechaVencimiento,
-            diasFPC: item.diasFPC,
-          });
-        } else if (isReserveByLevel || isReserveByAdditional) {
-          acc[sku].totalEnReserva += item.disponible;
-          acc[sku].reserveLocations.push({
-            lpn: item.lpn,
-            localizacion: locationStr,
-            disponible: item.disponible,
-            fechaVencimiento: item.fechaVencimiento,
-            diasFPC: item.diasFPC,
-          });
+          acc[sku].pickingLocations.push(locationData);
+        } else if (isReserveByLevel) {
+          acc[sku].totalPrimaryReserve += item.disponible;
+          acc[sku].primaryReserveLocations.push(locationData);
+        } else if (isReserveByAdditional) {
+          acc[sku].totalAdditionalReserve += item.disponible;
+          acc[sku].additionalReserveLocations.push(locationData);
         }
 
         return acc;
@@ -118,7 +110,8 @@ const salesAnalysisFlow = ai.defineFlow(
         {
           descripcion: string;
           totalEnPicking: number;
-          totalEnReserva: number;
+          totalPrimaryReserve: number;
+          totalAdditionalReserve: number;
           pickingLocations: {
             lpn: string;
             localizacion: string;
@@ -126,7 +119,14 @@ const salesAnalysisFlow = ai.defineFlow(
             fechaVencimiento?: string | null;
             diasFPC?: number | null;
           }[];
-          reserveLocations: {
+          primaryReserveLocations: {
+            lpn: string;
+            localizacion: string;
+            disponible: number;
+            fechaVencimiento?: string | null;
+            diasFPC?: number | null;
+          }[];
+          additionalReserveLocations: {
             lpn: string;
             localizacion: string;
             disponible: number;
@@ -172,26 +172,32 @@ const salesAnalysisFlow = ai.defineFlow(
         let needed = candidate.amountToRestock;
 
         for (const location of sortedReserveLocations) {
-          if (needed <= 0) break;
-
-          let amountToTake;
-          // Para artículos de alta rotación, sugerir mover todo el LPN/pallet.
-          // Para artículos de baja rotación (reposición), sugerir mover solo la cantidad exacta necesaria.
           if (candidate.isHighTurnover) {
-            amountToTake = location.disponible;
+            // High turnover: take whole pallets until deficit is met.
+            if (cantidadARestockear >= needed) break;
+            const amountToTake = location.disponible;
+            cantidadARestockear += amountToTake;
+            ubicacionesSugeridas.push({
+              lpn: location.lpn,
+              localizacion: location.localizacion,
+              diasFPC: location.diasFPC,
+              fechaVencimiento: location.fechaVencimiento,
+              cantidad: amountToTake,
+            });
           } else {
-            amountToTake = Math.min(location.disponible, needed);
+            // Low turnover: take exact needed amount.
+            if (needed <= 0) break;
+            const amountToTake = Math.min(location.disponible, needed);
+            cantidadARestockear += amountToTake;
+            ubicacionesSugeridas.push({
+              lpn: location.lpn,
+              localizacion: location.localizacion,
+              diasFPC: location.diasFPC,
+              fechaVencimiento: location.fechaVencimiento,
+              cantidad: amountToTake,
+            });
+            needed -= amountToTake;
           }
-
-          cantidadARestockear += amountToTake;
-          ubicacionesSugeridas.push({
-            lpn: location.lpn,
-            localizacion: location.localizacion,
-            diasFPC: location.diasFPC,
-            fechaVencimiento: location.fechaVencimiento,
-            cantidad: amountToTake,
-          });
-          needed -= amountToTake;
         }
 
         return {
@@ -201,13 +207,15 @@ const salesAnalysisFlow = ai.defineFlow(
           cantidadDisponible: candidate.stockEnPicking,
           cantidadARestockear: cantidadARestockear,
           ubicacionesSugeridas: ubicacionesSugeridas,
+          lpnDestino: null,
+          localizacionDestino: null,
         };
       });
     };
 
     const salesBySku = salesData.reduce(
       (acc, item) => {
-        const sku = item.material;
+        const sku = item.material.toUpperCase();
         if (!acc[sku]) {
           acc[sku] = {
             descripcion: item.descripcion,
@@ -220,10 +228,9 @@ const salesAnalysisFlow = ai.defineFlow(
       {} as Record<string, { descripcion: string; totalVendida: number }>,
     );
 
-    const candidates = [];
+    const candidates: any[] = [];
     const missingProducts: MissingProductsOutput[] = [];
-    const okProducts: z.infer<typeof GenerateRestockSuggestionsOutputSchema> =
-      [];
+    const okProducts: z.infer<typeof RestockSuggestionSchema>[] = [];
 
     const THRESHOLD_VENTAS_ALTAS = 10;
 
@@ -231,33 +238,57 @@ const salesAnalysisFlow = ai.defineFlow(
       const inventory = inventoryBySku[sku];
       const sale = salesBySku[sku];
 
+      // Case 1: Product sold but has NO inventory AT ALL (or no inventory with a VALID status).
       if (!inventory) {
         missingProducts.push({
           sku,
           descripcion: sale.descripcion,
           cantidadVendida: sale.totalVendida,
         });
-      } else if (
-        inventory.totalEnPicking < sale.totalVendida &&
-        inventory.totalEnReserva > 0
-      ) {
+        continue;
+      }
+
+      // Case 2: Stock in picking is insufficient to cover sales.
+      if (inventory.totalEnPicking < sale.totalVendida) {
         const amountToRestock = sale.totalVendida - inventory.totalEnPicking;
 
-        // Determinar si es una reposición de alta rotación (pallets completos) o una reposición pequeña (unidades exactas).
-        const isHighTurnover = amountToRestock >= THRESHOLD_VENTAS_ALTAS;
+        // Prioritize primary reserve levels (20-70) first.
+        const usePrimaryReserve = inventory.totalPrimaryReserve > 0;
+        const reserveLocationsToUse = usePrimaryReserve
+          ? inventory.primaryReserveLocations
+          : inventory.additionalReserveLocations;
 
-        candidates.push({
-          sku: sku,
-          descripcion: inventory.descripcion || sale.descripcion,
-          cantidadVendida: sale.totalVendida,
-          stockEnPicking: inventory.totalEnPicking,
-          ubicacionesDeReserva: inventory.reserveLocations.filter(
-            (loc) => loc.disponible > 0,
-          ),
-          amountToRestock: amountToRestock,
-          isHighTurnover: isHighTurnover, // Pasar la bandera al creador de sugerencias
-        });
-      } else if (inventory.totalEnPicking >= sale.totalVendida) {
+        const hasAnyReserve = reserveLocationsToUse.some(
+          (loc) => loc.disponible > 0,
+        );
+
+        // Subcase 2a: But reserve can help. This is a candidate for restock.
+        if (hasAnyReserve) {
+          const isHighTurnover = amountToRestock >= THRESHOLD_VENTAS_ALTAS;
+
+          candidates.push({
+            sku: sku,
+            descripcion: inventory.descripcion || sale.descripcion,
+            cantidadVendida: sale.totalVendida,
+            stockEnPicking: inventory.totalEnPicking,
+            ubicacionesDeReserva: reserveLocationsToUse.filter(
+              (loc) => loc.disponible > 0,
+            ),
+            amountToRestock: amountToRestock,
+            isHighTurnover: isHighTurnover,
+          });
+        }
+        // Subcase 2b: No reserve stock to help. This is effectively a "missing" product because it cannot be fulfilled.
+        else {
+          missingProducts.push({
+            sku,
+            descripcion: inventory.descripcion || sale.descripcion,
+            cantidadVendida: sale.totalVendida,
+          });
+        }
+      }
+      // Case 3: Picking stock is sufficient to cover sales.
+      else {
         okProducts.push({
           sku: sku,
           descripcion: inventory.descripcion || sale.descripcion,
@@ -271,6 +302,8 @@ const salesAnalysisFlow = ai.defineFlow(
             diasFPC: loc.diasFPC,
             cantidad: loc.disponible,
           })),
+          lpnDestino: null,
+          localizacionDestino: null,
         });
       }
     }
