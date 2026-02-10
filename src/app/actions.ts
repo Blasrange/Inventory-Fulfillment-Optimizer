@@ -5,58 +5,52 @@ import {
   type AnalysisResult,
 } from "@/ai/flows/sales-analysis";
 import { generateLevelsAnalysis } from "@/ai/flows/levels-analysis";
+import { runInventoryCross } from "@/ai/flows/inventory-cross";
 import * as XLSX from "xlsx";
 import type {
   GenerateRestockSuggestionsOutput,
   MissingProductsOutput,
+  InventoryCrossResult,
 } from "@/ai/flows/schemas";
 
 export async function runAnalysis(
-  analysisMode: "sales" | "levels",
+  analysisMode: "sales" | "levels" | "cross",
   inventoryData: any[] | null,
   salesData: any[] | null,
   minMaxData: any[] | null,
-): Promise<{ data?: AnalysisResult; error?: string }> {
+  sapData: any[] | null,
+  wmsData: any[] | null,
+  groupByLot?: boolean,
+): Promise<{ data?: AnalysisResult | InventoryCrossResult; error?: string }> {
   try {
-    let analysisResult: AnalysisResult;
-
-    if (!inventoryData) {
-      return { error: "Faltan los datos del inventario." };
-    }
-
     if (analysisMode === "sales") {
-      if (!salesData) {
-        return { error: "Faltan los datos de facturación." };
-      }
-      analysisResult = await generateSalesAnalysis({
-        inventoryData: inventoryData,
-        salesData: salesData,
-      });
-    } else {
-      // analysisMode === 'levels'
-      if (!minMaxData) {
-        return { error: "Faltan los datos de Mín/Máx." };
-      }
-      analysisResult = await generateLevelsAnalysis({
-        inventoryData: inventoryData,
-        minMaxData: minMaxData,
-      });
-    }
-
-    if (!analysisResult) {
+      if (!inventoryData || !salesData)
+        return { error: "Faltan los datos de inventario o facturación." };
       return {
-        error:
-          "No se pudieron generar sugerencias. El análisis no devolvió una respuesta válida.",
+        data: await generateSalesAnalysis({ inventoryData, salesData }),
+      };
+    } else if (analysisMode === "levels") {
+      if (!inventoryData || !minMaxData)
+        return { error: "Faltan los datos de inventario o Mín/Máx." };
+      return {
+        data: await generateLevelsAnalysis({ inventoryData, minMaxData }),
+      };
+    } else if (analysisMode === "cross") {
+      if (!sapData || !wmsData)
+        return { error: "Faltan los datos de SAP o WMS para el cruce." };
+      return {
+        data: await runInventoryCross({
+          sapData,
+          wmsData,
+          groupByLot: !!groupByLot,
+        }),
       };
     }
-
-    return { data: analysisResult };
+    return { error: "Modo de análisis no válido." };
   } catch (e) {
     console.error("Error running analysis:", e);
-    const errorMessage =
-      e instanceof Error ? e.message : "Ocurrió un error inesperado.";
     return {
-      error: `Ocurrió un error al procesar los archivos. ${errorMessage}`,
+      error: `Error al procesar: ${e instanceof Error ? e.message : "Error inesperado"}`,
     };
   }
 }
@@ -97,7 +91,6 @@ export async function generateWmsFiles(
       return { data: { file: fileBase64, filename: "LRLD.xlsx" } };
     }
 
-    // This 'else' covers 'levels' analysis
     const file2Data: {
       LTLD_LPN_SRC: string;
       LTLD_SKU: string;
@@ -112,7 +105,7 @@ export async function generateWmsFiles(
         file2Data.push({
           LTLD_LPN_SRC: ubicacion.lpn || "",
           LTLD_SKU: task.sku,
-          LTLD_LOT: "", // LOT is not available in the source data
+          LTLD_LOT: "",
           LTLD_QTY: ubicacion.cantidad,
           LTLD_LPN_DST: task.lpnDestino || "",
           LTLD_LOCATION_DST: task.localizacionDestino || "",
@@ -132,21 +125,45 @@ export async function generateWmsFiles(
     return { data: { file: fileBase64, filename: "LTLD.xlsx" } };
   } catch (e) {
     console.error("Error generating WMS files:", e);
-    const errorMessage =
-      e instanceof Error ? e.message : "Ocurrió un error inesperado.";
-    return { error: `Error al generar los archivos: ${errorMessage}` };
+    return {
+      error: `Error al generar los archivos: ${e instanceof Error ? e.message : "Error inesperado"}`,
+    };
   }
 }
 
 export async function generateFullReportFile(
   suggestions: GenerateRestockSuggestionsOutput | null,
   missingProducts: MissingProductsOutput[] | null,
-  analysisMode: "sales" | "levels",
+  analysisMode: "sales" | "levels" | "cross",
+  crossResults?: any[] | null,
 ): Promise<{ data?: { file: string; filename: string }; error?: string }> {
   try {
     const wb = XLSX.utils.book_new();
 
-    if (suggestions && suggestions.length > 0) {
+    if (analysisMode === "cross" && crossResults) {
+      // Mapear los datos para que solo incluyan los encabezados requeridos
+      const sheetData = crossResults.map((item: any) => ({
+        SKU: item.sku,
+        Lote: item.lote,
+        Descripción: item.descripcion,
+        "Stock SAP": item.cantidadSap,
+        "Stock WMS": item.cantidadWms,
+        Diferencia: item.diferencia,
+        Estado: item.diferencia !== 0 ? "Discrepancia" : "OK",
+      }));
+      const ws = XLSX.utils.json_to_sheet(sheetData, {
+        header: [
+          "SKU",
+          "Lote",
+          "Descripción",
+          "Stock SAP",
+          "Stock WMS",
+          "Diferencia",
+          "Estado",
+        ],
+      });
+      XLSX.utils.book_append_sheet(wb, ws, "Cruce SAP vs WMS");
+    } else if (suggestions && suggestions.length > 0) {
       const sortedSuggestions = [...suggestions].sort(
         (a, b) => b.cantidadARestockear - a.cantidadARestockear,
       );
@@ -181,7 +198,7 @@ export async function generateFullReportFile(
                 row["Cant. Vendida"] = 0;
                 row["Cant. en Picking"] = 0;
               }
-            } else {
+            } else if (analysisMode === "levels") {
               row["Cant. en Picking"] = s.cantidadDisponible;
             }
 
@@ -214,7 +231,9 @@ export async function generateFullReportFile(
           if (analysisMode === "sales") {
             row["Cant. Vendida"] = s.cantidadVendida;
           }
-          row["Cant. en Picking"] = s.cantidadDisponible;
+          if (analysisMode !== "cross") {
+            row["Cant. en Picking"] = s.cantidadDisponible;
+          }
           row["Cant. a Surtir"] = cantASurtir;
           row["Acción / Ubicaciones Origen"] =
             s.cantidadARestockear > 0 ? "Sin Origen" : "OK";
@@ -229,7 +248,6 @@ export async function generateFullReportFile(
         const colIndex = Object.keys(sheetData[0]).indexOf(
           "Tipo de Abastecimiento",
         );
-
         if (colIndex !== -1) {
           sheetData.forEach((_dataRow, rowIndex) => {
             const cellAddress = XLSX.utils.encode_cell({
@@ -237,7 +255,6 @@ export async function generateFullReportFile(
               c: colIndex,
             });
             const cell = ws[cellAddress];
-
             if (cell && typeof cell.v === "string") {
               if (cell.v === "Reabastecimiento Pallets Completos") {
                 cell.s = { fill: { fgColor: { rgb: "C6EFCE" } } };
@@ -256,18 +273,19 @@ export async function generateFullReportFile(
       XLSX.utils.book_append_sheet(wb, ws, "Productos Faltantes");
     }
 
-    if (wb.SheetNames.length === 0) {
+    if (wb.SheetNames.length === 0)
       return { error: "No hay datos para exportar." };
-    }
 
+    const filename =
+      analysisMode === "cross"
+        ? "Cruce_Inventarios.xlsx"
+        : "Reporte_Analisis_Surtido.xlsx";
     const fileBase64 = XLSX.write(wb, { type: "base64", bookType: "xlsx" });
-    return {
-      data: { file: fileBase64, filename: "Reporte_Analisis_Surtido.xlsx" },
-    };
+    return { data: { file: fileBase64, filename } };
   } catch (e) {
     console.error("Error generating report file:", e);
-    const errorMessage =
-      e instanceof Error ? e.message : "Ocurrió un error inesperado.";
-    return { error: `Error al generar el archivo de reporte: ${errorMessage}` };
+    return {
+      error: `Error al generar el archivo de reporte: ${e instanceof Error ? e.message : "Error inesperado"}`,
+    };
   }
 }

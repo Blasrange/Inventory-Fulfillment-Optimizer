@@ -22,6 +22,7 @@ export const InventoryDataSchema = z.array(
       ),
     fechaVencimiento: z.string().optional().nullable(),
     diasFPC: z.number().optional().nullable(),
+    lote: z.string().optional().nullable(),
   }),
 );
 
@@ -113,4 +114,20 @@ export const AnalysisResultSchema = z.object({
     .array(MissingProductSchema)
     .describe("Productos que se vendieron pero no tienen inventario en absoluto."),
 });
+
+export const InventoryCrossItemSchema = z.object({
+  sku: z.string(),
+  descripcion: z.string().optional(),
+  lote: z.string(),
+  cantidadSap: z.number(),
+  cantidadWms: z.number(),
+  diferencia: z.number(),
+});
+
+export const InventoryCrossResultSchema = z.object({
+  results: z.array(InventoryCrossItemSchema),
+});
+
+
 export type AnalysisResult = z.infer<typeof AnalysisResultSchema>;
+export type InventoryCrossResult = z.infer<typeof InventoryCrossResultSchema>;
