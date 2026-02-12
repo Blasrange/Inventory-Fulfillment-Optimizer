@@ -172,33 +172,39 @@ const salesAnalysisFlow = ai.defineFlow(
         let needed = candidate.amountToRestock;
 
         for (const location of sortedReserveLocations) {
+          if (cantidadARestockear >= needed) break;
+
+          let amountToTake;
+
+          // Validación de estiba completa
           if (candidate.isHighTurnover) {
-            // High turnover: take whole pallets until deficit is met.
-            if (cantidadARestockear >= needed) break;
-            const amountToTake = location.disponible;
-            cantidadARestockear += amountToTake;
-            ubicacionesSugeridas.push({
-              lpn: location.lpn,
-              localizacion: location.localizacion,
-              diasFPC: location.diasFPC,
-              fechaVencimiento: location.fechaVencimiento,
-              cantidad: amountToTake,
-            });
+            // High turnover: tomar pallets completos
+            amountToTake = location.disponible;
           } else {
-            // Low turnover: take exact needed amount.
-            if (needed <= 0) break;
-            const amountToTake = Math.min(location.disponible, needed);
-            cantidadARestockear += amountToTake;
-            ubicacionesSugeridas.push({
-              lpn: location.lpn,
-              localizacion: location.localizacion,
-              diasFPC: location.diasFPC,
-              fechaVencimiento: location.fechaVencimiento,
-              cantidad: amountToTake,
-            });
-            needed -= amountToTake;
+            // Bajo turnover: tomar solo lo necesario
+            amountToTake = Math.min(
+              location.disponible,
+              needed - cantidadARestockear,
+            );
           }
+
+          cantidadARestockear += amountToTake;
+
+          ubicacionesSugeridas.push({
+            lpn: location.lpn,
+            localizacion: location.localizacion,
+            diasFPC: location.diasFPC,
+            fechaVencimiento: location.fechaVencimiento,
+            cantidad: amountToTake,
+            esEstibaCompleta: amountToTake === location.disponible,
+          });
         }
+
+        // Calcular cantidad faltante
+        const cantidadFaltante = Math.max(
+          0,
+          candidate.amountToRestock - cantidadARestockear,
+        );
 
         return {
           sku: candidate.sku,
@@ -206,6 +212,8 @@ const salesAnalysisFlow = ai.defineFlow(
           cantidadVendida: candidate.cantidadVendida || 0,
           cantidadDisponible: candidate.stockEnPicking,
           cantidadARestockear: cantidadARestockear,
+          cantidadTotalCubierta: cantidadARestockear,
+          cantidadFaltante: cantidadFaltante,
           ubicacionesSugeridas: ubicacionesSugeridas,
           lpnDestino: null,
           localizacionDestino: null,
@@ -238,12 +246,17 @@ const salesAnalysisFlow = ai.defineFlow(
       const inventory = inventoryBySku[sku];
       const sale = salesBySku[sku];
 
-      // Case 1: Product sold but has NO inventory AT ALL (or no inventory with a VALID status).
+      // Case 1: Product sold but has NO inventory AT ALL
       if (!inventory) {
         missingProducts.push({
           sku,
           descripcion: sale.descripcion,
           cantidadVendida: sale.totalVendida,
+          cantidadFaltante: sale.totalVendida,
+          stockEnPicking: 0,
+          stockEnReserva: 0,
+          cantidadCubierta: 0,
+          tipoFalta: "SIN_INVENTARIO",
         });
         continue;
       }
@@ -252,42 +265,72 @@ const salesAnalysisFlow = ai.defineFlow(
       if (inventory.totalEnPicking < sale.totalVendida) {
         const amountToRestock = sale.totalVendida - inventory.totalEnPicking;
 
-        // Prioritize primary reserve levels (20-70) first.
+        // Prioritize primary reserve levels first
         const usePrimaryReserve = inventory.totalPrimaryReserve > 0;
         const reserveLocationsToUse = usePrimaryReserve
           ? inventory.primaryReserveLocations
           : inventory.additionalReserveLocations;
 
-        const hasAnyReserve = reserveLocationsToUse.some(
-          (loc) => loc.disponible > 0,
+        const totalReserveDisponible = reserveLocationsToUse.reduce(
+          (sum, loc) => sum + loc.disponible,
+          0,
         );
 
-        // Subcase 2a: But reserve can help. This is a candidate for restock.
+        const hasAnyReserve = totalReserveDisponible > 0;
+
+        // Subcase 2a: Reserve can help
         if (hasAnyReserve) {
           const isHighTurnover = amountToRestock >= THRESHOLD_VENTAS_ALTAS;
+          const cantidadCubierta = Math.min(
+            totalReserveDisponible,
+            amountToRestock,
+          );
+          const cantidadFaltante = amountToRestock - cantidadCubierta;
 
           candidates.push({
             sku: sku,
             descripcion: inventory.descripcion || sale.descripcion,
             cantidadVendida: sale.totalVendida,
             stockEnPicking: inventory.totalEnPicking,
+            stockEnReserva: totalReserveDisponible,
             ubicacionesDeReserva: reserveLocationsToUse.filter(
               (loc) => loc.disponible > 0,
             ),
             amountToRestock: amountToRestock,
+            cantidadCubierta: cantidadCubierta,
+            cantidadFaltante: cantidadFaltante,
             isHighTurnover: isHighTurnover,
           });
+
+          // Si hay cantidad faltante, agregar a missing products
+          if (cantidadFaltante > 0) {
+            missingProducts.push({
+              sku,
+              descripcion: inventory.descripcion || sale.descripcion,
+              cantidadVendida: sale.totalVendida,
+              cantidadFaltante: cantidadFaltante,
+              stockEnPicking: inventory.totalEnPicking,
+              stockEnReserva: totalReserveDisponible,
+              cantidadCubierta: cantidadCubierta,
+              tipoFalta: "RESERVA_INSUFICIENTE",
+            });
+          }
         }
-        // Subcase 2b: No reserve stock to help. This is effectively a "missing" product because it cannot be fulfilled.
+        // Subcase 2b: No reserve stock at all
         else {
           missingProducts.push({
             sku,
             descripcion: inventory.descripcion || sale.descripcion,
             cantidadVendida: sale.totalVendida,
+            cantidadFaltante: amountToRestock,
+            stockEnPicking: inventory.totalEnPicking,
+            stockEnReserva: 0,
+            cantidadCubierta: 0,
+            tipoFalta: "SIN_RESERVA",
           });
         }
       }
-      // Case 3: Picking stock is sufficient to cover sales.
+      // Case 3: Picking stock is sufficient
       else {
         okProducts.push({
           sku: sku,
@@ -295,12 +338,15 @@ const salesAnalysisFlow = ai.defineFlow(
           cantidadVendida: sale.totalVendida,
           cantidadDisponible: inventory.totalEnPicking,
           cantidadARestockear: 0,
+          cantidadTotalCubierta: 0,
+          cantidadFaltante: 0,
           ubicacionesSugeridas: inventory.pickingLocations.map((loc) => ({
             lpn: loc.lpn,
             localizacion: loc.localizacion,
             fechaVencimiento: loc.fechaVencimiento,
             diasFPC: loc.diasFPC,
             cantidad: loc.disponible,
+            esEstibaCompleta: false,
           })),
           lpnDestino: null,
           localizacionDestino: null,
@@ -315,6 +361,9 @@ const salesAnalysisFlow = ai.defineFlow(
       return a.sku.localeCompare(b.sku);
     });
 
-    return { suggestions: allSuggestions, missingProducts };
+    return {
+      suggestions: allSuggestions,
+      missingProducts,
+    };
   },
 );

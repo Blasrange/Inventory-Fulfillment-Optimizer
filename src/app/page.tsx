@@ -678,7 +678,7 @@ export default function Home() {
                     Procesando datos...
                   </p>
                   <p className="text-blue-500">
-                    Analizando patrones y generando insights
+                    Analizando patrones y generando perspectivas
                   </p>
                   <Progress value={65} className="w-64 h-2 bg-blue-200">
                     <div className="h-full bg-gradient-to-r from-blue-400 to-blue-500"></div>

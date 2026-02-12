@@ -13,6 +13,97 @@ import type {
   InventoryCrossResult,
 } from "@/ai/flows/schemas";
 
+// ============================================================================
+// FORMATO EXCEL
+// ============================================================================
+function aplicarEstilosModernos(
+  ws: XLSX.WorkSheet,
+  options: {
+    filaTotales?: number;
+    columnaEstado?: number;
+    columnaValor?: number[];
+  } = {},
+) {
+  const { filaTotales, columnaEstado } = options;
+
+  if (filaTotales !== undefined) {
+    const rango = XLSX.utils.decode_range(ws["!ref"] || "A1:A1");
+    for (let col = rango.s.c; col <= rango.e.c; col++) {
+      const celda = ws[XLSX.utils.encode_cell({ r: filaTotales, c: col })];
+      if (celda) {
+        celda.s = {
+          font: { bold: true, sz: 11, color: { rgb: "FFFFFF" } },
+          fill: { fgColor: { rgb: "5D9B9B" } },
+          border: {
+            top: { style: "thin", color: { rgb: "CCCCCC" } },
+            bottom: { style: "thin", color: { rgb: "CCCCCC" } },
+            left: { style: "thin", color: { rgb: "CCCCCC" } },
+            right: { style: "thin", color: { rgb: "CCCCCC" } },
+          },
+        };
+      }
+    }
+  }
+
+  if (columnaEstado !== undefined) {
+    const rango = XLSX.utils.decode_range(ws["!ref"] || "A1:A1");
+    for (let fila = rango.s.r + 1; fila <= rango.e.r; fila++) {
+      if (fila === filaTotales) continue;
+      const celda = ws[XLSX.utils.encode_cell({ r: fila, c: columnaEstado })];
+      if (celda?.v) {
+        const valor = String(celda.v);
+        if (
+          valor.includes("Sobrante") ||
+          valor === "OK" ||
+          valor.includes("Completos")
+        ) {
+          celda.s = { fill: { fgColor: { rgb: "E2F0D9" } } };
+        } else if (valor.includes("Faltante") || valor.includes("Sin origen")) {
+          celda.s = { fill: { fgColor: { rgb: "FCE4D6" } } };
+        } else if (valor.includes("Unidades")) {
+          celda.s = { fill: { fgColor: { rgb: "FFF2CC" } } };
+        } else if (valor.includes("Reserva")) {
+          celda.s = { fill: { fgColor: { rgb: "D9E1F2" } } };
+        } else if (valor.includes("Mixto")) {
+          celda.s = { fill: { fgColor: { rgb: "FFE699" } } }; // Color para lotes mixtos
+        }
+      }
+    }
+  }
+
+  const wscols = [];
+  const rango = XLSX.utils.decode_range(ws["!ref"] || "A1:A1");
+  for (let col = rango.s.c; col <= rango.e.c; col++) {
+    let maxLength = 0;
+    for (let fila = rango.s.r; fila <= rango.e.r; fila++) {
+      const celda = ws[XLSX.utils.encode_cell({ r: fila, c: col })];
+      if (celda?.v) maxLength = Math.max(maxLength, String(celda.v).length);
+    }
+    wscols.push({ wch: Math.min(Math.max(maxLength + 2, 12), 50) });
+  }
+  ws["!cols"] = wscols;
+}
+
+function agregarFilaTotales<T extends Record<string, any>>(
+  data: T[],
+  totales: Record<string, number>,
+): T[] {
+  if (data.length === 0) return data;
+
+  const filaTotales = { ...data[0] } as any;
+  Object.keys(filaTotales).forEach((key) => (filaTotales[key] = ""));
+  filaTotales[Object.keys(data[0])[0]] = "🔹 TOTALES";
+
+  Object.entries(totales).forEach(([key, valor]) => {
+    if (filaTotales.hasOwnProperty(key)) filaTotales[key] = valor;
+  });
+
+  return [...data, filaTotales];
+}
+
+// ============================================================================
+// ANÁLISIS DE INVENTARIO
+// ============================================================================
 export async function runAnalysis(
   analysisMode: "sales" | "levels" | "cross",
   inventoryData: any[] | null,
@@ -25,19 +116,23 @@ export async function runAnalysis(
   try {
     if (analysisMode === "sales") {
       if (!inventoryData || !salesData)
-        return { error: "Faltan los datos de inventario o facturación." };
+        return { error: "❌ Faltan los datos de inventario o facturación." };
       return {
         data: await generateSalesAnalysis({ inventoryData, salesData }),
       };
-    } else if (analysisMode === "levels") {
+    }
+
+    if (analysisMode === "levels") {
       if (!inventoryData || !minMaxData)
-        return { error: "Faltan los datos de inventario o Mín/Máx." };
+        return { error: "❌ Faltan los datos de inventario o Mín/Máx." };
       return {
         data: await generateLevelsAnalysis({ inventoryData, minMaxData }),
       };
-    } else if (analysisMode === "cross") {
+    }
+
+    if (analysisMode === "cross") {
       if (!sapData || !wmsData)
-        return { error: "Faltan los datos de SAP o WMS para el cruce." };
+        return { error: "❌ Faltan los datos de SAP o WMS para el cruce." };
       return {
         data: await runInventoryCross({
           sapData,
@@ -46,91 +141,96 @@ export async function runAnalysis(
         }),
       };
     }
-    return { error: "Modo de análisis no válido." };
+
+    return { error: "❌ Modo de análisis no válido." };
   } catch (e) {
-    console.error("Error running analysis:", e);
+    console.error("Error en análisis:", e);
     return {
-      error: `Error al procesar: ${e instanceof Error ? e.message : "Error inesperado"}`,
+      error: `❌ Error al procesar: ${e instanceof Error ? e.message : "Error inesperado"}`,
     };
   }
 }
 
+// ============================================================================
+// ARCHIVOS WMS
+// ============================================================================
 export async function generateWmsFiles(
   suggestions: GenerateRestockSuggestionsOutput,
   analysisMode: "sales" | "levels",
 ): Promise<{ data?: { file: string; filename: string }; error?: string }> {
   try {
     const tasks = suggestions.filter((s) => s.cantidadARestockear > 0);
-
-    if (tasks.length === 0) {
-      return { error: "No hay sugerencias de surtido para exportar." };
-    }
+    if (tasks.length === 0)
+      return { error: "📦 No hay sugerencias de surtido para exportar." };
 
     if (analysisMode === "sales") {
-      const file1Data: { LRLD_LPN_CODE: string; LRLD_LOCATION: string }[] = [];
-      tasks.forEach((task) => {
-        task.ubicacionesSugeridas.forEach((ubicacion) => {
-          file1Data.push({
-            LRLD_LPN_CODE: ubicacion.lpn || "",
-            LRLD_LOCATION: ubicacion.localizacion,
-          });
-        });
-      });
+      const file1Data = tasks.flatMap((task) =>
+        task.ubicacionesSugeridas.map((ubicacion) => ({
+          LRLD_LPN_CODE: ubicacion.lpn || "",
+          LRLD_LOCATION: ubicacion.localizacion,
+        })),
+      );
 
-      if (file1Data.length === 0) {
+      if (file1Data.length === 0)
         return {
-          error: "No se encontraron datos para generar el archivo LRLD.",
+          error: "📄 No se encontraron datos para generar el archivo LRLD.",
         };
-      }
 
       const wb = XLSX.utils.book_new();
       const ws = XLSX.utils.json_to_sheet(file1Data);
+      aplicarEstilosModernos(ws);
       XLSX.utils.book_append_sheet(wb, ws, "LRLD");
-      const fileBase64 = XLSX.write(wb, { type: "base64", bookType: "xlsx" });
 
-      return { data: { file: fileBase64, filename: "LRLD.xlsx" } };
+      return {
+        data: {
+          file: XLSX.write(wb, { type: "base64", bookType: "xlsx" }),
+          filename: "LRLD_WMS.xlsx",
+        },
+      };
     }
 
-    const file2Data: {
-      LTLD_LPN_SRC: string;
-      LTLD_SKU: string;
-      LTLD_LOT: string;
-      LTLD_QTY: number;
-      LTLD_LPN_DST: string;
-      LTLD_LOCATION_DST: string;
-    }[] = [];
+    const file2Data = tasks.flatMap((task) =>
+      task.ubicacionesSugeridas.map((ubicacion) => ({
+        LTLD_LPN_SRC: ubicacion.lpn || "",
+        LTLD_SKU: task.sku,
+        LTLD_LOT: "",
+        LTLD_QTY: ubicacion.cantidad,
+        LTLD_LPN_DST: task.lpnDestino || "",
+        LTLD_LOCATION_DST: task.localizacionDestino || "",
+        //LTLD_ESTIBA_COMPLETA: ubicacion.esEstibaCompleta ? "SI" : "NO",
+        //LTLD_TIPO_MOVIMIENTO: ubicacion.esEstibaCompleta
+        // ? "PALLET_COMPLETO"
+        //  : "UNIDADES_PARCIALES",
+      })),
+    );
 
-    tasks.forEach((task) => {
-      task.ubicacionesSugeridas.forEach((ubicacion) => {
-        file2Data.push({
-          LTLD_LPN_SRC: ubicacion.lpn || "",
-          LTLD_SKU: task.sku,
-          LTLD_LOT: "",
-          LTLD_QTY: ubicacion.cantidad,
-          LTLD_LPN_DST: task.lpnDestino || "",
-          LTLD_LOCATION_DST: task.localizacionDestino || "",
-        });
-      });
-    });
-
-    if (file2Data.length === 0) {
-      return { error: "No se encontraron datos para generar el archivo LTLD." };
-    }
+    if (file2Data.length === 0)
+      return {
+        error: "📄 No se encontraron datos para generar el archivo LTLD.",
+      };
 
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.json_to_sheet(file2Data);
+    aplicarEstilosModernos(ws);
     XLSX.utils.book_append_sheet(wb, ws, "LTLD");
-    const fileBase64 = XLSX.write(wb, { type: "base64", bookType: "xlsx" });
 
-    return { data: { file: fileBase64, filename: "LTLD.xlsx" } };
-  } catch (e) {
-    console.error("Error generating WMS files:", e);
     return {
-      error: `Error al generar los archivos: ${e instanceof Error ? e.message : "Error inesperado"}`,
+      data: {
+        file: XLSX.write(wb, { type: "base64", bookType: "xlsx" }),
+        filename: "LTLD_WMS.xlsx",
+      },
+    };
+  } catch (e) {
+    console.error("Error generando archivos WMS:", e);
+    return {
+      error: `❌ Error al generar los archivos: ${e instanceof Error ? e.message : "Error inesperado"}`,
     };
   }
 }
 
+// ============================================================================
+// REPORTES COMPLETOS
+// ============================================================================
 export async function generateFullReportFile(
   suggestions: GenerateRestockSuggestionsOutput | null,
   missingProducts: MissingProductsOutput[] | null,
@@ -140,152 +240,476 @@ export async function generateFullReportFile(
   try {
     const wb = XLSX.utils.book_new();
 
-    if (analysisMode === "cross" && crossResults) {
-      // Mapear los datos para que solo incluyan los encabezados requeridos
-      const sheetData = crossResults.map((item: any) => ({
+    // REPORTE CRUCE
+    if (analysisMode === "cross" && crossResults?.length) {
+      const sortedCrossResults = [...crossResults].sort(
+        (a, b) => b.diferencia - a.diferencia,
+      );
+
+      const sheetData = sortedCrossResults.map((item: any) => ({
         SKU: item.sku,
-        Lote: item.lote,
-        Descripción: item.descripcion,
-        "Stock SAP": item.cantidadSap,
-        "Stock WMS": item.cantidadWms,
-        Diferencia: item.diferencia,
-        Estado: item.diferencia !== 0 ? "Discrepancia" : "OK",
+        Lote: item.lote || "S/L",
+        Descripción: item.descripcion || "",
+        "Stock SAP": item.cantidadSap || 0,
+        "Stock WMS": item.cantidadWms || 0,
+        Diferencia: item.diferencia || 0,
+        Estado:
+          item.diferencia > 0
+            ? "✅Sobrante"
+            : item.diferencia < 0
+              ? "❌Faltante"
+              : "⏹️ OK",
       }));
-      const ws = XLSX.utils.json_to_sheet(sheetData, {
-        header: [
-          "SKU",
-          "Lote",
-          "Descripción",
-          "Stock SAP",
-          "Stock WMS",
-          "Diferencia",
-          "Estado",
-        ],
+
+      const totales = {
+        "Stock SAP": sheetData.reduce(
+          (sum, item) => sum + item["Stock SAP"],
+          0,
+        ),
+        "Stock WMS": sheetData.reduce(
+          (sum, item) => sum + item["Stock WMS"],
+          0,
+        ),
+        Diferencia: sheetData.reduce((sum, item) => sum + item.Diferencia, 0),
+      };
+
+      const dataConTotales = agregarFilaTotales(sheetData, totales);
+      const ws = XLSX.utils.json_to_sheet(dataConTotales);
+
+      aplicarEstilosModernos(ws, {
+        filaTotales: dataConTotales.length - 1,
+        columnaEstado: Object.keys(sheetData[0]).indexOf("Estado"),
       });
-      XLSX.utils.book_append_sheet(wb, ws, "Cruce SAP vs WMS");
-    } else if (suggestions && suggestions.length > 0) {
+
+      XLSX.utils.book_append_sheet(wb, ws, "📊 Cruce SAP vs WMS");
+
+      // ========================================================================
+      // HOJA DE RESUMEN DE VALORES - ANÁLISIS COMPLETO POR SKU Y POR LOTE
+      // ========================================================================
+
+      // ------------------------------------------------------------------------
+      // 1. ANÁLISIS POR SKU (PRODUCTO)
+      // ------------------------------------------------------------------------
+      const totalSap = crossResults.reduce(
+        (sum, item: any) => sum + (item.cantidadSap || 0),
+        0,
+      );
+      const totalWms = crossResults.reduce(
+        (sum, item: any) => sum + (item.cantidadWms || 0),
+        0,
+      );
+
+      const totalSobranteUnidades = crossResults
+        .filter((item: any) => item.diferencia > 0)
+        .reduce((sum, item) => sum + item.diferencia, 0);
+
+      const totalFaltanteUnidades = crossResults
+        .filter((item: any) => item.diferencia < 0)
+        .reduce((sum, item) => sum + Math.abs(item.diferencia), 0);
+
+      const totalSKUsSobrantes = crossResults.filter(
+        (item: any) => item.diferencia > 0,
+      ).length;
+      const totalSKUsFaltantes = crossResults.filter(
+        (item: any) => item.diferencia < 0,
+      ).length;
+      const totalSKUsOK = crossResults.filter(
+        (item: any) => item.diferencia === 0,
+      ).length;
+
+      // ------------------------------------------------------------------------
+      // 2. ANÁLISIS POR LOTE - CON DETECCIÓN DE LOTES MIXTOS
+      // ------------------------------------------------------------------------
+
+      // Agrupar por lote para análisis a nivel de lote
+      const lotesMap = new Map();
+
+      crossResults.forEach((item: any) => {
+        const claveLote = item.lote || "S/L";
+        if (!lotesMap.has(claveLote)) {
+          lotesMap.set(claveLote, {
+            lote: claveLote,
+            tieneSobrante: false,
+            tieneFaltante: false,
+            tieneOK: true,
+            totalDiferencia: 0,
+            cantidadItems: 0,
+            itemsSobrantes: 0,
+            itemsFaltantes: 0,
+            itemsOK: 0,
+            skusSobrantes: [], // Para debug/ análisis detallado
+            skusFaltantes: [], // Para debug/ análisis detallado
+          });
+        }
+
+        const loteInfo = lotesMap.get(claveLote);
+        loteInfo.cantidadItems++;
+        loteInfo.totalDiferencia += item.diferencia || 0;
+
+        // Clasificar el estado de este item
+        if (item.diferencia > 0) {
+          loteInfo.tieneSobrante = true;
+          loteInfo.tieneOK = false;
+          loteInfo.itemsSobrantes++;
+          loteInfo.skusSobrantes.push({
+            sku: item.sku,
+            diferencia: item.diferencia,
+          });
+        } else if (item.diferencia < 0) {
+          loteInfo.tieneFaltante = true;
+          loteInfo.tieneOK = false;
+          loteInfo.itemsFaltantes++;
+          loteInfo.skusFaltantes.push({
+            sku: item.sku,
+            diferencia: item.diferencia,
+          });
+        } else {
+          loteInfo.itemsOK++;
+        }
+      });
+
+      const lotesArray = Array.from(lotesMap.values());
+
+      // Clasificar lotes según su estado general
+      let lotesSoloSobrantes = 0;
+      let lotesSoloFaltantes = 0;
+      let lotesMixtos = 0; // Tienen tanto sobrante como faltante
+      let lotesOK = 0;
+
+      // Array para almacenar detalles de lotes mixtos (para posible hoja adicional)
+      const lotesMixtosDetalle: any[] = [];
+
+      lotesArray.forEach((lote) => {
+        if (lote.tieneSobrante && lote.tieneFaltante) {
+          lotesMixtos++;
+          lotesMixtosDetalle.push({
+            Lote: lote.lote,
+            "SKUs con Sobrante": lote.itemsSobrantes,
+            "SKUs con Faltante": lote.itemsFaltantes,
+            "Diferencia Neta": lote.totalDiferencia,
+            Estado: "🟡 Mixto",
+          });
+        } else if (lote.tieneSobrante) {
+          lotesSoloSobrantes++;
+        } else if (lote.tieneFaltante) {
+          lotesSoloFaltantes++;
+        } else if (lote.tieneOK) {
+          lotesOK++;
+        }
+      });
+
+      const totalLotes = lotesArray.length;
+      const lotesConNovedad =
+        lotesSoloSobrantes + lotesSoloFaltantes + lotesMixtos;
+
+      // ------------------------------------------------------------------------
+      // CONSTRUCCIÓN DE LA HOJA DE RESUMEN
+      // ------------------------------------------------------------------------
+      const resumenData = [
+        // ========== SECCIÓN 1: STOCK TOTAL ==========
+        { Concepto: "🏭 STOCK TOTAL", Valor: "", Unidad: "" },
+        { Concepto: "  • Stock SAP", Valor: totalSap, Unidad: "Unidades" },
+        { Concepto: "  • Stock WMS", Valor: totalWms, Unidad: "Unidades" },
+        {
+          Concepto: "  • Diferencia Total",
+          Valor: totalSap - totalWms,
+          Unidad: "Unidades",
+        },
+        { Concepto: "", Valor: "", Unidad: "" },
+
+        // ========== SECCIÓN 2: DIFERENCIAS EN UNIDADES ==========
+        { Concepto: "💰 DIFERENCIAS EN UNIDADES", Valor: "", Unidad: "" },
+        {
+          Concepto: "  • Total Sobrante",
+          Valor: totalSobranteUnidades,
+          Unidad: "Unidades",
+        },
+        {
+          Concepto: "  • Total Faltante",
+          Valor: totalFaltanteUnidades,
+          Unidad: "Unidades",
+        },
+        {
+          Concepto: "  • Diferencia Neta",
+          Valor: totalSobranteUnidades - totalFaltanteUnidades,
+          Unidad: "Unidades",
+        },
+        { Concepto: "", Valor: "", Unidad: "" },
+
+        // ========== SECCIÓN 3: ANÁLISIS POR SKU (PRODUCTO) ==========
+        { Concepto: "📦 ANÁLISIS POR SKU", Valor: "", Unidad: "" },
+        {
+          Concepto: "  • SKUs con Sobrante",
+          Valor: totalSKUsSobrantes,
+          Unidad: "SKUs",
+        },
+        {
+          Concepto: "  • SKUs con Faltante",
+          Valor: totalSKUsFaltantes,
+          Unidad: "SKUs",
+        },
+        { Concepto: "  • SKUs OK", Valor: totalSKUsOK, Unidad: "SKUs" },
+        {
+          Concepto: "  • TOTAL SKUs",
+          Valor: crossResults.length,
+          Unidad: "SKUs",
+        },
+        { Concepto: "", Valor: "", Unidad: "" },
+
+        // ========== SECCIÓN 4: ANÁLISIS POR LOTE ==========
+        { Concepto: "📋 ANÁLISIS POR LOTE", Valor: "", Unidad: "" },
+        {
+          Concepto: "  • Lotes solo con Sobrante",
+          Valor: lotesSoloSobrantes,
+          Unidad: "Lotes",
+        },
+        {
+          Concepto: "  • Lotes solo con Faltante",
+          Valor: lotesSoloFaltantes,
+          Unidad: "Lotes",
+        },
+        {
+          Concepto: "  • Lotes Mixtos (Sobrante + Faltante)",
+          Valor: lotesMixtos,
+          Unidad: "Lotes",
+        },
+        {
+          Concepto: "  • TOTAL LOTES CON NOVEDAD",
+          Valor: lotesConNovedad,
+          Unidad: "Lotes",
+        },
+        {
+          Concepto: "  • Lotes OK",
+          Valor: lotesOK,
+          Unidad: "Lotes",
+        },
+        {
+          Concepto: "  • TOTAL LOTES ANALIZADOS",
+          Valor: totalLotes,
+          Unidad: "Lotes",
+        },
+      ];
+
+      const wsResumen = XLSX.utils.json_to_sheet(resumenData);
+
+      // Aplicar estilos con formato condicional
+      aplicarEstilosModernos(wsResumen);
+
+      // Ajustar ancho de columnas específicamente para mejor visualización
+      wsResumen["!cols"] = [
+        { wch: 45 }, // Columna Concepto
+        { wch: 20 }, // Columna Valor
+        { wch: 15 }, // Columna Unidad
+      ];
+
+      XLSX.utils.book_append_sheet(wb, wsResumen, "📈 Resumen de Valores");
+
+      // ========================================================================
+      // HOJA ADICIONAL: DETALLE DE LOTES MIXTOS (OPCIONAL PERO MUY ÚTIL)
+      // ========================================================================
+      if (lotesMixtosDetalle.length > 0) {
+        const wsLotesMixtos = XLSX.utils.json_to_sheet(lotesMixtosDetalle);
+        aplicarEstilosModernos(wsLotesMixtos, {
+          columnaEstado: Object.keys(lotesMixtosDetalle[0]).indexOf("Estado"),
+        });
+        XLSX.utils.book_append_sheet(wb, wsLotesMixtos, "⚠️ Lotes Mixtos");
+      }
+    }
+
+    // REPORTE SUGERENCIAS
+    else if (suggestions?.length) {
       const sortedSuggestions = [...suggestions].sort(
         (a, b) => b.cantidadARestockear - a.cantidadARestockear,
       );
-
       const sheetData: any[] = [];
+
       sortedSuggestions.forEach((s) => {
-        if (s.ubicacionesSugeridas && s.ubicacionesSugeridas.length > 0) {
+        if (s.ubicacionesSugeridas?.length) {
           s.ubicacionesSugeridas.forEach((u, index) => {
             const cantASurtir = s.cantidadARestockear > 0 ? u.cantidad : 0;
-            const tipoAbastecimiento =
-              cantASurtir > 0
-                ? cantASurtir > 10
-                  ? "Reabastecimiento Pallets Completos"
-                  : "Reabastecimiento de Unidades"
-                : "OK";
-
-            const row: { [key: string]: any } = {
+            const row: any = {
               SKU: s.sku,
-              Descripción: s.descripcion,
+              Descripción:
+                s.descripcion?.substring(0, 40) +
+                (s.descripcion?.length > 40 ? "..." : ""),
+              ...(analysisMode === "levels" && {
+                "Ubicación Destino": s.localizacionDestino || "",
+                "LPN Destino": s.lpnDestino || "",
+              }),
+              ...(analysisMode === "sales" && {
+                Vendido: index === 0 ? s.cantidadVendida || 0 : 0,
+                "Stock Picking": index === 0 ? s.cantidadDisponible || 0 : 0,
+              }),
+              ...(analysisMode === "levels" && {
+                "Stock Actual": s.cantidadDisponible || 0,
+              }),
+              "Cant. a Surtir": cantASurtir,
+              Origen: `${u.localizacion}${u.lpn ? ` (${u.lpn})` : ""}`,
+              Tipo:
+                cantASurtir > 0
+                  ? u.esEstibaCompleta
+                    ? "✅ Pallet Completo"
+                    : "🔄 Unidades Parciales"
+                  : "⏹️ OK",
+              Estiba: u.esEstibaCompleta ? "📦 SI" : "📦 NO",
+              ...(analysisMode === "sales" && {
+                Cubierto:
+                  index === 0
+                    ? s.cantidadTotalCubierta || s.cantidadARestockear || 0
+                    : 0,
+                Faltante: index === 0 ? s.cantidadFaltante || 0 : 0,
+              }),
             };
-
-            if (analysisMode === "levels") {
-              row["Destino"] = s.localizacionDestino || "";
-              row["LPN Destino"] = s.lpnDestino || "";
-            }
-
-            if (analysisMode === "sales") {
-              if (index === 0) {
-                row["Cant. Vendida"] = s.cantidadVendida;
-                row["Cant. en Picking"] = s.cantidadDisponible;
-              } else {
-                row["Cant. Vendida"] = 0;
-                row["Cant. en Picking"] = 0;
-              }
-            } else if (analysisMode === "levels") {
-              row["Cant. en Picking"] = s.cantidadDisponible;
-            }
-
-            row["Cant. a Surtir"] = cantASurtir;
-            row["Acción / Ubicaciones Origen"] =
-              `${u.localizacion}${u.lpn ? ` (LPN: ${u.lpn})` : ""} (Cant: ${u.cantidad})`;
-            row["Tipo de Abastecimiento"] = tipoAbastecimiento;
-
             sheetData.push(row);
           });
         } else {
-          const cantASurtir = s.cantidadARestockear;
-          const tipoAbastecimiento =
-            cantASurtir > 0
-              ? cantASurtir > 10
-                ? "Reabastecimiento Pallets Completos"
-                : "Reabastecimiento de Unidades"
-              : "OK";
-
-          const row: { [key: string]: any } = {
+          const row: any = {
             SKU: s.sku,
-            Descripción: s.descripcion,
+            Descripción: s.descripcion?.substring(0, 40),
+            ...(analysisMode === "levels" && {
+              "Ubicación Destino": s.localizacionDestino || "",
+              "LPN Destino": s.lpnDestino || "",
+            }),
+            ...(analysisMode === "sales" && {
+              Vendido: s.cantidadVendida || 0,
+              "Stock Picking": s.cantidadDisponible || 0,
+            }),
+            ...(analysisMode === "levels" && {
+              "Stock Actual": s.cantidadDisponible || 0,
+            }),
+            "Cant. a Surtir": s.cantidadARestockear || 0,
+            Origen: s.cantidadARestockear > 0 ? "⚠️ Sin Origen" : "⏹️ OK",
+            Tipo: s.cantidadARestockear > 0 ? "❌ No disponible" : "⏹️ OK",
+            Estiba: "N/A",
+            ...(analysisMode === "sales" && {
+              Cubierto: s.cantidadTotalCubierta || 0,
+              Faltante: s.cantidadFaltante || 0,
+            }),
           };
-
-          if (analysisMode === "levels") {
-            row["Destino"] = s.localizacionDestino || "";
-            row["LPN Destino"] = s.lpnDestino || "";
-          }
-
-          if (analysisMode === "sales") {
-            row["Cant. Vendida"] = s.cantidadVendida;
-          }
-          if (analysisMode !== "cross") {
-            row["Cant. en Picking"] = s.cantidadDisponible;
-          }
-          row["Cant. a Surtir"] = cantASurtir;
-          row["Acción / Ubicaciones Origen"] =
-            s.cantidadARestockear > 0 ? "Sin Origen" : "OK";
-          row["Tipo de Abastecimiento"] = tipoAbastecimiento;
           sheetData.push(row);
         }
       });
 
-      const ws = XLSX.utils.json_to_sheet(sheetData);
+      const totalCantidadSurtir = sheetData.reduce(
+        (sum, row) => sum + (row["Cant. a Surtir"] || 0),
+        0,
+      );
 
-      if (sheetData.length > 0) {
-        const colIndex = Object.keys(sheetData[0]).indexOf(
-          "Tipo de Abastecimiento",
-        );
-        if (colIndex !== -1) {
-          sheetData.forEach((_dataRow, rowIndex) => {
-            const cellAddress = XLSX.utils.encode_cell({
-              r: rowIndex + 1,
-              c: colIndex,
-            });
-            const cell = ws[cellAddress];
-            if (cell && typeof cell.v === "string") {
-              if (cell.v === "Reabastecimiento Pallets Completos") {
-                cell.s = { fill: { fgColor: { rgb: "C6EFCE" } } };
-              } else if (cell.v === "Reabastecimiento de Unidades") {
-                cell.s = { fill: { fgColor: { rgb: "FFEB9C" } } };
-              }
-            }
-          });
-        }
+      if (analysisMode === "sales") {
+        sheetData.push({
+          SKU: "🔸 RESUMEN",
+          Descripción: "TOTALES GENERALES",
+          Vendido: sheetData.reduce(
+            (sum, row) => sum + (row["Vendido"] || 0),
+            0,
+          ),
+          "Stock Picking": sheetData.reduce(
+            (sum, row) => sum + (row["Stock Picking"] || 0),
+            0,
+          ),
+          "Cant. a Surtir": totalCantidadSurtir,
+          Origen: "",
+          Tipo: "",
+          Estiba: "",
+          Cubierto: sheetData.reduce(
+            (sum, row) => sum + (row["Cubierto"] || 0),
+            0,
+          ),
+          Faltante: sheetData.reduce(
+            (sum, row) => sum + (row["Faltante"] || 0),
+            0,
+          ),
+        });
+      } else {
+        sheetData.push({
+          SKU: "🔸 RESUMEN",
+          Descripción: "TOTALES GENERALES",
+          "Stock Actual": sheetData.reduce(
+            (sum, row) => sum + (row["Stock Actual"] || 0),
+            0,
+          ),
+          "Cant. a Surtir": totalCantidadSurtir,
+          Origen: "",
+          Tipo: "",
+          Estiba: "",
+        });
       }
-      XLSX.utils.book_append_sheet(wb, ws, "Sugerencias de Surtido");
+
+      const ws = XLSX.utils.json_to_sheet(sheetData);
+      aplicarEstilosModernos(ws, {
+        filaTotales: sheetData.length - 1,
+        columnaEstado: Object.keys(sheetData[0]).indexOf("Tipo"),
+      });
+
+      XLSX.utils.book_append_sheet(wb, ws, "📋 Sugerencias de Surtido");
     }
 
-    if (missingProducts && missingProducts.length > 0) {
-      const ws = XLSX.utils.json_to_sheet(missingProducts);
-      XLSX.utils.book_append_sheet(wb, ws, "Productos Faltantes");
+    // REPORTE FALTANTES
+    if (missingProducts?.length) {
+      const categorias = [
+        { tipo: "SIN_INVENTARIO", nombre: "❌ Sin Inventario" },
+        { tipo: "SIN_RESERVA", nombre: "⚠️ Sin Reserva" },
+        { tipo: "RESERVA_INSUFICIENTE", nombre: "🔄 Reserva Insuficiente" },
+      ];
+
+      categorias.forEach(({ tipo, nombre }) => {
+        const productos = missingProducts.filter((p) => p.tipoFalta === tipo);
+        if (productos.length === 0) return;
+
+        const data = productos.map((item) => ({
+          SKU: item.sku,
+          Descripción: item.descripcion?.substring(0, 50),
+          Vendido: item.cantidadVendida || 0,
+          "Stock Picking": item.stockEnPicking || 0,
+          "Stock Reserva": item.stockEnReserva || 0,
+          Cubierto: item.cantidadCubierta || 0,
+          Faltante: item.cantidadFaltante || item.cantidadVendida || 0,
+          Estado:
+            tipo === "SIN_INVENTARIO"
+              ? "Sin Stock"
+              : tipo === "SIN_RESERVA"
+                ? "Sin Reserva"
+                : "Reserva Insuficiente",
+        }));
+
+        const totalFaltante = data.reduce((sum, row) => sum + row.Faltante, 0);
+        const dataConTotales = agregarFilaTotales(data, {
+          Faltante: totalFaltante,
+        });
+        const ws = XLSX.utils.json_to_sheet(dataConTotales);
+
+        aplicarEstilosModernos(ws, {
+          filaTotales: dataConTotales.length - 1,
+          columnaEstado: Object.keys(data[0]).indexOf("Estado"),
+        });
+
+        XLSX.utils.book_append_sheet(wb, ws, nombre);
+      });
     }
 
     if (wb.SheetNames.length === 0)
-      return { error: "No hay datos para exportar." };
+      return { error: "📄 No hay datos para exportar." };
 
+    const timestamp = new Date().toISOString().slice(0, 10).replace(/-/g, "");
     const filename =
       analysisMode === "cross"
-        ? "Cruce_Inventarios.xlsx"
-        : "Reporte_Analisis_Surtido.xlsx";
-    const fileBase64 = XLSX.write(wb, { type: "base64", bookType: "xlsx" });
-    return { data: { file: fileBase64, filename } };
-  } catch (e) {
-    console.error("Error generating report file:", e);
+        ? `Cruce_Inventarios_${timestamp}.xlsx`
+        : `Reporte_Surtido_${timestamp}.xlsx`;
+
     return {
-      error: `Error al generar el archivo de reporte: ${e instanceof Error ? e.message : "Error inesperado"}`,
+      data: {
+        file: XLSX.write(wb, {
+          type: "base64",
+          bookType: "xlsx",
+          compression: true,
+        }),
+        filename,
+      },
+    };
+  } catch (e) {
+    console.error("Error generando reporte:", e);
+    return {
+      error: `❌ Error al generar el archivo: ${e instanceof Error ? e.message : "Error inesperado"}`,
     };
   }
 }

@@ -63,7 +63,7 @@ const inventoryCrossFlow = ai.defineFlow(
       const descripcion = sap?.descripcion || wms?.descripcion || '';
       const cantidadSap = sap?.cantidad || 0;
       const cantidadWms = wms?.cantidad || 0;
-      const diferencia = cantidadSap - cantidadWms;
+      const diferencia = cantidadWms - cantidadSap;
 
       return {
         sku,

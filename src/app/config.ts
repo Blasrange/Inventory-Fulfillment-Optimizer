@@ -9,7 +9,7 @@
  */
 
 export const salesColumnMapping = {
-  material: ["Material", "ID de Producto", "codigo"],
+  material: ["Material", "ID de Producto", "codigo", "Material"],
   descripcion: ["Descripción", "Nombre de Artículo"],
   cantidadConfirmada: ["cantidad confirmada", "Cant. Facturada"],
 };
@@ -34,7 +34,7 @@ export const minMaxColumnMapping = {
 };
 
 export const sapInventoryMapping = {
-  sku: ["Material"],
+  sku: ["Material", "Material"],
   descripcion: ["Texto breve material"],
   lote: ["Ce. Lote", "Lote"],
   cantidad: ["Stock disponible", "WM stock disp."],

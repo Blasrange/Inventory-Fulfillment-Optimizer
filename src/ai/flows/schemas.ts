@@ -53,6 +53,10 @@ export const UbicacionSugeridaSchema = z.object({
     .nullable()
     .describe("Fecha de expiración del stock en esta ubicación."),
   cantidad: z.number().describe("La cantidad del artículo en esta ubicación."),
+  esEstibaCompleta: z
+    .boolean()
+    .optional()
+    .describe("Indica si se toma toda la estiba completa de esta ubicación."),
 });
 
 export const RestockSuggestionSchema = z.object({
@@ -73,6 +77,18 @@ export const RestockSuggestionSchema = z.object({
     .describe(
       "La cantidad sugerida para mover de las ubicaciones de reserva a las de picking.",
     ),
+  cantidadTotalCubierta: z
+    .number()
+    .optional()
+    .describe(
+      "La cantidad total que se pudo cubrir con inventario de reserva.",
+    ),
+  cantidadFaltante: z
+    .number()
+    .optional()
+    .describe(
+      "La cantidad total que no se pudo cubrir por falta de inventario.",
+    ),
   ubicacionesSugeridas: z
     .array(UbicacionSugeridaSchema)
     .describe(
@@ -82,7 +98,9 @@ export const RestockSuggestionSchema = z.object({
     .string()
     .optional()
     .nullable()
-    .describe("El LPN de destino para el reabastecimiento, proveniente del archivo de mínimos/máximos."),
+    .describe(
+      "El LPN de destino para el reabastecimiento, proveniente del archivo de mínimos/máximos.",
+    ),
   localizacionDestino: z
     .string()
     .optional()
@@ -103,6 +121,26 @@ export const MissingProductSchema = z.object({
   sku: z.string().describe("El SKU del producto."),
   descripcion: z.string().describe("La descripción del producto."),
   cantidadVendida: z.number().describe("La cantidad vendida."),
+  cantidadFaltante: z
+    .number()
+    .optional()
+    .describe("La cantidad que falta para completar el pedido."),
+  stockEnPicking: z
+    .number()
+    .optional()
+    .describe("La cantidad disponible en ubicaciones de picking."),
+  stockEnReserva: z
+    .number()
+    .optional()
+    .describe("La cantidad disponible en ubicaciones de reserva."),
+  cantidadCubierta: z
+    .number()
+    .optional()
+    .describe("La cantidad que se pudo cubrir con stock de reserva."),
+  tipoFalta: z
+    .enum(["SIN_INVENTARIO", "SIN_RESERVA", "RESERVA_INSUFICIENTE"])
+    .optional()
+    .describe("El tipo de falta de inventario."),
 });
 export type MissingProductsOutput = z.infer<typeof MissingProductSchema>;
 
@@ -112,7 +150,9 @@ export const AnalysisResultSchema = z.object({
   ),
   missingProducts: z
     .array(MissingProductSchema)
-    .describe("Productos que se vendieron pero no tienen inventario en absoluto."),
+    .describe(
+      "Productos que se vendieron pero no tienen inventario suficiente.",
+    ),
 });
 
 export const InventoryCrossItemSchema = z.object({
@@ -127,7 +167,6 @@ export const InventoryCrossItemSchema = z.object({
 export const InventoryCrossResultSchema = z.object({
   results: z.array(InventoryCrossItemSchema),
 });
-
 
 export type AnalysisResult = z.infer<typeof AnalysisResultSchema>;
 export type InventoryCrossResult = z.infer<typeof InventoryCrossResultSchema>;
