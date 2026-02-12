@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
+import { Analytics } from "@vercel/analytics/react"; // 🔴 LÍNEA 1: Importar Analytics
 
 export const metadata: Metadata = {
   title: "Surtido Inteligente",
@@ -29,6 +30,7 @@ export default function RootLayout({
       <body className="font-body antialiased">
         {children}
         <Toaster />
+        <Analytics /> {/* 🔴 LÍNEA 2: Agregar el componente Analytics */}
       </body>
     </html>
   );
