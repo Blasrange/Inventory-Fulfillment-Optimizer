@@ -530,8 +530,8 @@ export async function generateFullReportFile(
             const row: any = {
               SKU: s.sku,
               Descripción:
-                s.descripcion?.substring(0, 40) +
-                (s.descripcion?.length > 40 ? "..." : ""),
+                s.descripcion?.substring(0, 83) +
+                (s.descripcion?.length > 83 ? "..." : ""),
               ...(analysisMode === "levels" && {
                 "Ubicación Destino": s.localizacionDestino || "",
                 "LPN Destino": s.lpnDestino || "",
@@ -544,7 +544,9 @@ export async function generateFullReportFile(
                 "Stock Actual": s.cantidadDisponible || 0,
               }),
               "Cant. a Surtir": cantASurtir,
-              Origen: `${u.localizacion}${u.lpn ? ` (${u.lpn})` : ""}`,
+              // Origen: `${u.localizacion}${u.lpn ? ` (${u.lpn})` : ""}`,
+              "Ubicación Origen": u.localizacion || "",
+              "LPN Origen": u.lpn || "",
               Tipo:
                 cantASurtir > 0
                   ? u.esEstibaCompleta
@@ -565,7 +567,7 @@ export async function generateFullReportFile(
         } else {
           const row: any = {
             SKU: s.sku,
-            Descripción: s.descripcion?.substring(0, 40),
+            Descripción: s.descripcion?.substring(0, 83),
             ...(analysisMode === "levels" && {
               "Ubicación Destino": s.localizacionDestino || "",
               "LPN Destino": s.lpnDestino || "",
