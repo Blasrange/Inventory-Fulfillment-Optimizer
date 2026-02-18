@@ -165,10 +165,16 @@ export async function generateWmsFiles(
 
     if (analysisMode === "sales") {
       const file1Data = tasks.flatMap((task) =>
-        task.ubicacionesSugeridas.map((ubicacion) => ({
-          LRLD_LPN_CODE: ubicacion.lpn || "",
-          LRLD_LOCATION: ubicacion.localizacion,
-        })),
+        task.ubicacionesSugeridas
+          .filter((ubicacion) => !ubicacion.esEstibaCompleta) // Solo unidades parciales para LTLD
+          .map((ubicacion) => ({
+            LTLD_LPN_SRC: ubicacion.lpn || "",
+            LTLD_SKU: task.sku,
+            LTLD_LOT: "",
+            LTLD_QTY: ubicacion.cantidad,
+            LTLD_LPN_DST: task.lpnDestino || "",
+            LTLD_LOCATION_DST: task.localizacionDestino || "",
+          })),
       );
 
       if (file1Data.length === 0)
@@ -184,7 +190,7 @@ export async function generateWmsFiles(
       return {
         data: {
           file: XLSX.write(wb, { type: "base64", bookType: "xlsx" }),
-          filename: "LRLD_WMS.xlsx",
+          filename: "Traslados_Masivos_WMS.xlsx",
         },
       };
     }
@@ -197,10 +203,6 @@ export async function generateWmsFiles(
         LTLD_QTY: ubicacion.cantidad,
         LTLD_LPN_DST: task.lpnDestino || "",
         LTLD_LOCATION_DST: task.localizacionDestino || "",
-        //LTLD_ESTIBA_COMPLETA: ubicacion.esEstibaCompleta ? "SI" : "NO",
-        //LTLD_TIPO_MOVIMIENTO: ubicacion.esEstibaCompleta
-        // ? "PALLET_COMPLETO"
-        //  : "UNIDADES_PARCIALES",
       })),
     );
 
@@ -217,7 +219,7 @@ export async function generateWmsFiles(
     return {
       data: {
         file: XLSX.write(wb, { type: "base64", bookType: "xlsx" }),
-        filename: "LTLD_WMS.xlsx",
+        filename: "Traslados_Masivos_WMS.xlsx",
       },
     };
   } catch (e) {
