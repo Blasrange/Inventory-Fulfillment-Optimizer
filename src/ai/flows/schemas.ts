@@ -1,5 +1,19 @@
 import { z } from "genkit";
 
+/**
+ * Helper para asegurar que campos que deben ser texto se conviertan a string
+ * de forma segura, incluso si vienen como números desde Excel (ej. 46600).
+ */
+const COERCE_STRING = z.preprocess((val) => {
+  if (val === null || val === undefined) return "";
+  return String(val);
+}, z.string());
+
+const COERCE_STRING_OPTIONAL = z.preprocess((val) => {
+  if (val === null || val === undefined) return "";
+  return String(val);
+}, z.string().optional());
+
 export const SalesDataSchema = z.array(
   z.object({
     material: z.string(),
@@ -168,5 +182,36 @@ export const InventoryCrossResultSchema = z.object({
   results: z.array(InventoryCrossItemSchema),
 });
 
+// NUEVOS ESQUEMAS PARA ENTRADAS (INBOUND) CON COERCIÓN REFORZADA
+export const InboundItemSchema = z.object({
+  N_ORDER: COERCE_STRING,
+  ORDER2: COERCE_STRING_OPTIONAL,
+  PURCHASE_ORDER: COERCE_STRING_OPTIONAL,
+  INVOICE: COERCE_STRING_OPTIONAL,
+  PROVIDER_UID: COERCE_STRING,
+  ORDER_DATE: COERCE_STRING,
+  SERVICE_DATE: COERCE_STRING_OPTIONAL,
+  INBOUNDTYPE_CODE: COERCE_STRING,
+  NOTE: COERCE_STRING_OPTIONAL,
+  SKU: COERCE_STRING,
+  LOTE: COERCE_STRING_OPTIONAL,
+  FECHA_DE_VENCIMIENTO: COERCE_STRING_OPTIONAL,
+  FECHA_DE_FABRICACION: COERCE_STRING_OPTIONAL,
+  SERIAL: COERCE_STRING_OPTIONAL,
+  ESTADO_CALIDAD: COERCE_STRING,
+  QTY: z.number(),
+  UOM_CODE: COERCE_STRING,
+  REFERENCE: COERCE_STRING_OPTIONAL,
+  PRICE: z.number().optional(),
+  TAXES: z.number().optional(),
+  IBL_LPN_CODE: COERCE_STRING_OPTIONAL,
+  IBL_WEIGHT: z.number().optional(),
+});
+
+export const InboundResultSchema = z.object({
+  results: z.array(InboundItemSchema),
+});
+
 export type AnalysisResult = z.infer<typeof AnalysisResultSchema>;
 export type InventoryCrossResult = z.infer<typeof InventoryCrossResultSchema>;
+export type InboundResult = z.infer<typeof InboundResultSchema>;

@@ -6,11 +6,13 @@ import {
 } from "@/ai/flows/sales-analysis";
 import { generateLevelsAnalysis } from "@/ai/flows/levels-analysis";
 import { runInventoryCross } from "@/ai/flows/inventory-cross";
+import { runInboundProcess } from "@/ai/flows/inbound";
 import * as XLSX from "xlsx";
 import type {
   GenerateRestockSuggestionsOutput,
   MissingProductsOutput,
   InventoryCrossResult,
+  InboundResult,
 } from "@/ai/flows/schemas";
 
 // ============================================================================
@@ -105,14 +107,22 @@ function agregarFilaTotales<T extends Record<string, any>>(
 // ANÁLISIS DE INVENTARIO
 // ============================================================================
 export async function runAnalysis(
-  analysisMode: "sales" | "levels" | "cross",
+  analysisMode: "sales" | "levels" | "cross" | "inbound",
   inventoryData: any[] | null,
   salesData: any[] | null,
   minMaxData: any[] | null,
   sapData: any[] | null,
   wmsData: any[] | null,
   groupByLot?: boolean,
-): Promise<{ data?: AnalysisResult | InventoryCrossResult; error?: string }> {
+  inboundInput?: {
+    rows: any[];
+    mapping: Record<string, string>;
+    fixedValues: Record<string, string>;
+  },
+): Promise<{
+  data?: AnalysisResult | InventoryCrossResult | InboundResult;
+  error?: string;
+}> {
   try {
     if (analysisMode === "sales") {
       if (!inventoryData || !salesData)
@@ -142,6 +152,14 @@ export async function runAnalysis(
       };
     }
 
+    if (analysisMode === "inbound") {
+      if (!inboundInput)
+        return { error: "❌ Faltan datos para el mapeo de entrada." };
+      return {
+        data: await runInboundProcess(inboundInput),
+      };
+    }
+
     return { error: "❌ Modo de análisis no válido." };
   } catch (e) {
     console.error("Error en análisis:", e);
@@ -149,6 +167,143 @@ export async function runAnalysis(
       error: `❌ Error al procesar: ${e instanceof Error ? e.message : "Error inesperado"}`,
     };
   }
+}
+
+// ============================================================================
+// EXPORTACIÓN EXCEL ENTRADAS
+// ============================================================================
+export async function generateInboundExcel(
+  data: any[],
+): Promise<{ file: string; filename: string }> {
+  // Función auxiliar para formatear fechas
+  const formatearFecha = (fecha: any): string => {
+    if (!fecha) return "";
+
+    try {
+      // Si ya es un string, intentamos parsearlo
+      let fechaObj: Date | null = null;
+
+      if (fecha instanceof Date) {
+        fechaObj = fecha;
+      } else if (typeof fecha === "string") {
+        // Intentamos diferentes formatos de fecha
+        const timestamp = Date.parse(fecha);
+        if (!isNaN(timestamp)) {
+          fechaObj = new Date(timestamp);
+        }
+      } else if (typeof fecha === "number") {
+        // Si es número, asumimos que es timestamp
+        fechaObj = new Date(fecha);
+      }
+
+      if (fechaObj && !isNaN(fechaObj.getTime())) {
+        const dia = fechaObj.getUTCDate().toString().padStart(2, "0");
+        const mes = (fechaObj.getUTCMonth() + 1).toString().padStart(2, "0");
+        const anio = fechaObj.getUTCFullYear();
+        return `${dia}/${mes}/${anio}`;
+      }
+    } catch (e) {
+      console.warn("Error formateando fecha:", e);
+    }
+
+    // Si no podemos formatear, devolvemos el valor original como string
+    return fecha?.toString() || "";
+  };
+
+  // Procesamos los datos para formatear las fechas ANTES de convertirlos a hoja
+  const datosFormateados = data.map((item) => ({
+    N_ORDER: item.N_ORDER || "",
+    ORDER2: item.ORDER2 || "",
+    PURCHASE_ORDER: item.PURCHASE_ORDER || "",
+    INVOICE: item.INVOICE || "",
+    PROVIDER_UID: item.PROVIDER_UID || "",
+    ORDER_DATE: formatearFecha(item.ORDER_DATE),
+    SERVICE_DATE: formatearFecha(item.SERVICE_DATE),
+    INBOUNDTYPE_CODE: item.INBOUNDTYPE_CODE || "",
+    NOTE: item.NOTE || "",
+    SKU: item.SKU || "",
+    LOTE: item.LOTE || "",
+    FECHA_DE_VENCIMIENTO: formatearFecha(item.FECHA_DE_VENCIMIENTO),
+    FECHA_DE_FABRICACION: formatearFecha(item.FECHA_DE_FABRICACION),
+    SERIAL: item.SERIAL || "",
+    ESTADO_CALIDAD: item.ESTADO_CALIDAD || "",
+    QTY: item.QTY || 0,
+    UOM_CODE: item.UOM_CODE || "",
+    REFERENCE: item.REFERENCE || "",
+    PRICE: item.PRICE || "",
+    TAXES: item.TAXES || "",
+    IBL_LPN_CODE: item.IBL_LPN_CODE || "",
+    IBL_WEIGHT: item.IBL_WEIGHT || "",
+  }));
+
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.json_to_sheet(datosFormateados, {
+    header: [
+      "N_ORDER",
+      "ORDER2",
+      "PURCHASE_ORDER",
+      "INVOICE",
+      "PROVIDER_UID",
+      "ORDER_DATE",
+      "SERVICE_DATE",
+      "INBOUNDTYPE_CODE",
+      "NOTE",
+      "SKU",
+      "LOTE",
+      "FECHA_DE_VENCIMIENTO",
+      "FECHA_DE_FABRICACION",
+      "SERIAL",
+      "ESTADO_CALIDAD",
+      "QTY",
+      "UOM_CODE",
+      "REFERENCE",
+      "PRICE",
+      "TAXES",
+      "IBL_LPN_CODE",
+      "IBL_WEIGHT",
+    ],
+  });
+
+  // Opcional: Aplicar formato de texto a las columnas de fecha para asegurar que Excel las trate como texto
+  const rango = XLSX.utils.decode_range(ws["!ref"] || "A1:A1");
+
+  // Índices de las columnas de fecha (basado en el header)
+  const columnasFecha = [
+    "ORDER_DATE",
+    "SERVICE_DATE",
+    "FECHA_DE_VENCIMIENTO",
+    "FECHA_DE_FABRICACION",
+  ];
+
+  const headerRow =
+    datosFormateados.length > 0 ? Object.keys(datosFormateados[0]) : [];
+  const indicesFecha = columnasFecha
+    .map((col) => headerRow.indexOf(col))
+    .filter((idx) => idx !== -1);
+
+  // Para cada fila de datos (omitimos el header porque ya lo manejamos con json_to_sheet)
+  for (let fila = rango.s.r + 1; fila <= rango.e.r; fila++) {
+    indicesFecha.forEach((col) => {
+      const direccion = XLSX.utils.encode_cell({ r: fila, c: col });
+      if (ws[direccion]) {
+        // Forzar que la celda sea tratada como texto
+        ws[direccion].t = "s"; // 's' significa string en la librería xlsx
+      }
+    });
+  }
+
+  XLSX.utils.book_append_sheet(wb, ws, "INBOUND");
+
+  // CAMBIO IMPORTANTE: Usar bookType "xls" para Excel 97-2003
+  const fileBase64 = XLSX.write(wb, {
+    type: "base64",
+    bookType: "xls", // Cambiado de "xlsx" a "xls"
+  });
+
+  return {
+    file: fileBase64,
+    filename: `Entrada_WMS_${new Date().toISOString().slice(0, 10)}.xls`, // Cambiado a .xls
+  };
 }
 
 // ============================================================================
@@ -189,8 +344,11 @@ export async function generateWmsFiles(
 
       return {
         data: {
-          file: XLSX.write(wb, { type: "base64", bookType: "xlsx" }),
-          filename: "Traslados_Masivos_WMS.xlsx",
+          file: XLSX.write(wb, {
+            type: "base64",
+            bookType: "xls",
+          }),
+          filename: "Traslados_Masivos_WMS.xls",
         },
       };
     }
@@ -218,8 +376,11 @@ export async function generateWmsFiles(
 
     return {
       data: {
-        file: XLSX.write(wb, { type: "base64", bookType: "xlsx" }),
-        filename: "Traslados_Masivos_WMS.xlsx",
+        file: XLSX.write(wb, {
+          type: "base64",
+          bookType: "xls",
+        }),
+        filename: "Traslados_Masivos_WMS.xls",
       },
     };
   } catch (e) {

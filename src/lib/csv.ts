@@ -1,5 +1,8 @@
 import * as XLSX from "xlsx";
 
+/**
+ * Parsea archivos de texto (CSV/TSV).
+ */
 function parseTextData(
   fileContent: string,
   columnMapping: Record<string, string[]>,
@@ -16,7 +19,7 @@ function parseTextData(
 
   const headerIndices: Record<string, number> = {};
   const internalKeys = Object.keys(columnMapping);
-  const optionalInternalKeys = ["fechavencimiento", "diasfpc"];
+  const optionalInternalKeys = ["fechavencimiento", "diasfpc", "lote"];
 
   internalKeys.forEach((internalKey) => {
     const possibleHeaders = columnMapping[internalKey].map((h) =>
@@ -53,7 +56,6 @@ function parseTextData(
           let value: any = values[index].trim();
 
           if (numericColumns.includes(jsonKey)) {
-            // Maneja formatos como "1.234,56" -> 1234.56 y "1234.56" -> 1234.56
             value = parseFloat(value.replace(/\./g, "").replace(",", ".")) || 0;
           }
           record[jsonKey] = value;
@@ -62,7 +64,6 @@ function parseTextData(
       return record;
     })
     .filter((record) => {
-      // Filtra filas que están esencialmente vacías
       return Object.values(record).some(
         (val) => val !== "" && val !== 0 && val !== null && val !== undefined,
       );
@@ -71,6 +72,9 @@ function parseTextData(
   return data;
 }
 
+/**
+ * Parsea archivos Excel (.xlsx).
+ */
 function parseExcelData(
   fileBuffer: Buffer,
   columnMapping: Record<string, string[]>,
@@ -95,7 +99,7 @@ function parseExcelData(
 
   const headerIndices: Record<string, number> = {};
   const internalKeys = Object.keys(columnMapping);
-  const optionalInternalKeys = ["fechavencimiento", "diasfpc"];
+  const optionalInternalKeys = ["fechavencimiento", "diasfpc", "lote"];
 
   internalKeys.forEach((internalKey) => {
     const possibleHeaders = columnMapping[internalKey].map((h) =>
@@ -141,7 +145,7 @@ function parseExcelData(
             value = 0;
           }
         } else if (value !== undefined && value !== null) {
-          value = String(value);
+          value = String(value).trim();
         } else {
           value = "";
         }
@@ -158,6 +162,9 @@ function parseExcelData(
   return data;
 }
 
+/**
+ * Función principal para parsear datos con mapeo predefinido.
+ */
 export function parseData(
   content: string | ArrayBuffer,
   columnMapping: Record<string, string[]>,
@@ -169,4 +176,40 @@ export function parseData(
     return parseTextData(content, columnMapping, numericColumns);
   }
   throw new Error("Tipo de contenido de archivo no compatible.");
+}
+
+/**
+ * Función para parsear CUALQUIER archivo y devolver los encabezados y filas crudas.
+ */
+export function parseRawData(content: string | ArrayBuffer): {
+  headers: string[];
+  rows: any[];
+} {
+  let jsonData: any[][] = [];
+  if (content instanceof ArrayBuffer) {
+    const workbook = XLSX.read(Buffer.from(content), { type: "buffer" });
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+    jsonData = XLSX.utils.sheet_to_json(worksheet, {
+      header: 1,
+      blankrows: false,
+    }) as any[][];
+  } else {
+    const lines = content.trim().replace(/\r/g, "").split("\n");
+    const delimiter = lines[0].includes("\t") ? "\t" : ",";
+    jsonData = lines.map((line) => line.split(delimiter));
+  }
+
+  if (jsonData.length === 0) return { headers: [], rows: [] };
+
+  const headers = jsonData[0].map((h) => String(h || "").trim());
+  const rows = jsonData.slice(1).map((row) => {
+    const record: Record<string, any> = {};
+    headers.forEach((header, index) => {
+      record[header] = row[index] !== undefined ? row[index] : "";
+    });
+    return record;
+  });
+
+  return { headers, rows };
 }

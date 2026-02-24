@@ -8,22 +8,22 @@ Este proyecto fue desarrollado para mejorar el control de stock, reducir quiebre
 
 ## 🚀 Características Principales
 
-* Cruce automático entre inventario y ventas.
-* Análisis de rotación de productos.
-* Generación de sugerencias de surtido.
-* Creación de archivos listos para cargar en el WMS.
-* Interfaz web intuitiva.
-* Procesamiento local de datos.
+- Cruce automático entre inventario y ventas.
+- Análisis de rotación de productos.
+- Generación de sugerencias de surtido.
+- Creación de archivos listos para cargar en el WMS.
+- Interfaz web intuitiva.
+- Procesamiento local de datos.
 
 ---
 
 ## 🛠️ Tecnologías Utilizadas
 
-* Node.js
-* Next.js
-* JavaScript / TypeScript
-* Genkit (motor de procesamiento)
-* Git / GitHub
+- Node.js
+- Next.js
+- JavaScript / TypeScript
+- Genkit (motor de procesamiento)
+- Git / GitHub
 
 ---
 
@@ -31,9 +31,9 @@ Este proyecto fue desarrollado para mejorar el control de stock, reducir quiebre
 
 Antes de ejecutar el proyecto, asegúrate de tener instalado:
 
-* Node.js (versión 18 o superior)
-* Visual Studio Code u otro editor de código
-* Git
+- Node.js (versión 18 o superior)
+- Visual Studio Code u otro editor de código
+- Git
 
 Puedes descargar Node.js desde:
 [https://nodejs.org/](https://nodejs.org/)
@@ -138,11 +138,11 @@ git add .; git commit -m "Actualización del proyecto"; git push origin main
 
 Surtido Inteligente fue desarrollado con el objetivo de:
 
-* Optimizar el manejo de inventarios.
-* Reducir reprocesos.
-* Mejorar la planificación de surtido.
-* Apoyar las operaciones logísticas.
-* Fortalecer la gestión de información.
+- Optimizar el manejo de inventarios.
+- Reducir reprocesos.
+- Mejorar la planificación de surtido.
+- Apoyar las operaciones logísticas.
+- Fortalecer la gestión de información.
 
 ---
 
