@@ -93,7 +93,7 @@ const FIELD_GROUPS = [
         label: "Número de Orden",
         description: "Identificador único de la orden",
         required: true,
-        dynamic: false,
+        dynamic: true,
         placeholder: "Ej: ORD-2024-001",
       },
       {
@@ -753,7 +753,13 @@ export function InboundMapper({
                     </div>
                     <div>
                       <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
-                        Configuración de Entrada
+                        {"Configuración de Entrada"}
+                        <Badge
+                          variant="secondary"
+                          className="text-[10px] px-1.5"
+                        >
+                          WMS
+                        </Badge>
                       </h3>
                       <div className="flex items-center gap-2 text-xs text-slate-500">
                         <span>{headers.length} columnas</span>

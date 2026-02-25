@@ -50,6 +50,15 @@ export const MinMaxDataSchema = z.array(
   }),
 );
 
+export const ShelfLifeMasterSchema = z.array(
+  z.object({
+    sku: z.string(),
+    diasMinimos: z
+      .number()
+      .describe("Días máximos permitidos de vida útil según la maestra."),
+  }),
+);
+
 export const UbicacionSugeridaSchema = z.object({
   lpn: z
     .string()
@@ -182,6 +191,23 @@ export const InventoryCrossResultSchema = z.object({
   results: z.array(InventoryCrossItemSchema),
 });
 
+export const ShelfLifeResultItemSchema = z.object({
+  sku: z.string(),
+  descripcion: z.string(),
+  lpn: z.string(),
+  localizacion: z.string(),
+  lote: z.string().optional().nullable(),
+  fechaVencimiento: z.string().optional().nullable(),
+  diasFPC: z.number(),
+  diasMinimosMaestra: z.number(),
+  cumple: z.boolean(),
+  estado: z.string(),
+});
+
+export const ShelfLifeResultSchema = z.object({
+  results: z.array(ShelfLifeResultItemSchema),
+});
+
 // NUEVOS ESQUEMAS PARA ENTRADAS (INBOUND) CON COERCIÓN REFORZADA
 export const InboundItemSchema = z.object({
   N_ORDER: COERCE_STRING,
@@ -215,3 +241,4 @@ export const InboundResultSchema = z.object({
 export type AnalysisResult = z.infer<typeof AnalysisResultSchema>;
 export type InventoryCrossResult = z.infer<typeof InventoryCrossResultSchema>;
 export type InboundResult = z.infer<typeof InboundResultSchema>;
+export type ShelfLifeResult = z.infer<typeof ShelfLifeResultSchema>;

@@ -7,12 +7,14 @@ import {
 import { generateLevelsAnalysis } from "@/ai/flows/levels-analysis";
 import { runInventoryCross } from "@/ai/flows/inventory-cross";
 import { runInboundProcess } from "@/ai/flows/inbound";
+import { runShelfLifeAnalysis } from "@/ai/flows/shelf-life";
 import * as XLSX from "xlsx";
 import type {
   GenerateRestockSuggestionsOutput,
   MissingProductsOutput,
   InventoryCrossResult,
   InboundResult,
+  ShelfLifeResult,
 } from "@/ai/flows/schemas";
 
 // ============================================================================
@@ -57,10 +59,15 @@ function aplicarEstilosModernos(
         if (
           valor.includes("Sobrante") ||
           valor === "OK" ||
-          valor.includes("Completos")
+          valor.includes("Completos") ||
+          valor === "CUMPLE"
         ) {
           celda.s = { fill: { fgColor: { rgb: "E2F0D9" } } };
-        } else if (valor.includes("Faltante") || valor.includes("Sin origen")) {
+        } else if (
+          valor.includes("Faltante") ||
+          valor.includes("Sin origen") ||
+          valor === "ALERTA"
+        ) {
           celda.s = { fill: { fgColor: { rgb: "FCE4D6" } } };
         } else if (valor.includes("Unidades")) {
           celda.s = { fill: { fgColor: { rgb: "FFF2CC" } } };
@@ -107,12 +114,13 @@ function agregarFilaTotales<T extends Record<string, any>>(
 // ANÁLISIS DE INVENTARIO
 // ============================================================================
 export async function runAnalysis(
-  analysisMode: "sales" | "levels" | "cross" | "inbound",
+  analysisMode: "sales" | "levels" | "cross" | "inbound" | "shelfLife",
   inventoryData: any[] | null,
   salesData: any[] | null,
   minMaxData: any[] | null,
   sapData: any[] | null,
   wmsData: any[] | null,
+  shelfLifeMasterData: any[] | null,
   groupByLot?: boolean,
   inboundInput?: {
     rows: any[];
@@ -120,7 +128,11 @@ export async function runAnalysis(
     fixedValues: Record<string, string>;
   },
 ): Promise<{
-  data?: AnalysisResult | InventoryCrossResult | InboundResult;
+  data?:
+    | AnalysisResult
+    | InventoryCrossResult
+    | InboundResult
+    | ShelfLifeResult;
   error?: string;
 }> {
   try {
@@ -157,6 +169,19 @@ export async function runAnalysis(
         return { error: "❌ Faltan datos para el mapeo de entrada." };
       return {
         data: await runInboundProcess(inboundInput),
+      };
+    }
+
+    if (analysisMode === "shelfLife") {
+      if (!inventoryData || !shelfLifeMasterData)
+        return {
+          error: "❌ Faltan los datos de inventario o Maestra de Vida Útil.",
+        };
+      return {
+        data: await runShelfLifeAnalysis({
+          inventoryData,
+          shelfLifeMasterData,
+        }),
       };
     }
 
@@ -294,6 +319,58 @@ export async function generateInboundExcel(
 
   XLSX.utils.book_append_sheet(wb, ws, "INBOUND");
 
+  // ================= DATOS MAESTROS - FORMATO BONITO =====================
+  const datos = [
+    // Tipos de Entrada
+    ["📦 Tipos de pedidos de Entrada"],
+    ["Código", "Nombre", "Estado"],
+    ["101", "Entr. mercancías EM", "A"],
+    ["202", "DM p.centro de cost", "A"],
+    ["602", "DM AnulEntregSalMcí", "A"],
+    ["653", "EntregMcía:DevLibUt", "A"],
+    ["657", "EntregMcía:DevolBlo", "A"],
+    ["EXD", "Entrada por Devolucion", "A"],
+    ["EXN", "ENTRADA POR NO INGRESO EN TRASLADO", "A"],
+    ["ZC1", "Mcía.defect.lib-CS", "A"],
+    ["ZJ8", "DM AnulEntregSalMcía", "A"],
+    ["ZS2", "DM mcía.def.bloq-CS", "A"],
+    ["ZS6", "DM mcía.def.bloq-ES", "A"],
+    [],
+    ["══════════════════════════"],
+    [],
+
+    // Estados de Calidad
+    ["✅ Estados de Calidad"],
+    ["Código", "Nombre", "Estado"],
+    ["X", "LOTE NO LIBRE", "A"],
+    ["SV", "SALVAGE", "A"],
+    ["BPV", "BLOQUEO X VERIFICACION", "A"],
+    ["L", "STOCK EN ALMACEN LIBRE", "A"],
+    ["S", "BLOQUEO LOGISTICO", "A"],
+    ["Q", "BLOQUEADO CALIDAD", "A"],
+    ["AOP", "AVERIA ORIGEN PLANTA", "A"],
+    ["AC", "BLOQUEADO POR AVERIA", "A"],
+    [],
+    ["══════════════════════════"],
+    [],
+
+    // Proveedores
+    ["🏢 Proveedores"],
+    ["Nit", "Proveedor", "Ciudad"],
+    ["830050346-8", "NESTLE PURINA PET CARE DE COLOMBIA", "MEDELLIN"],
+    ["860002130", "NESTLÉ PURINA PET CARE", "LA ESTRELLA"],
+    ["9005222651", "AGRO UNION PURINA S.A.S.", "LA UNION"],
+  ];
+
+  // Crear la hoja de Excel
+  const wsDatosMaestros = XLSX.utils.aoa_to_sheet(datos);
+
+  // Ajustar ancho de columnas
+  wsDatosMaestros["!cols"] = [{ wch: 20 }, { wch: 30 }];
+
+  // Agregar al libro
+  XLSX.utils.book_append_sheet(wb, wsDatosMaestros, "Datos Maestros");
+
   // CAMBIO IMPORTANTE: Usar bookType "xls" para Excel 97-2003
   const fileBase64 = XLSX.write(wb, {
     type: "base64",
@@ -397,14 +474,36 @@ export async function generateWmsFiles(
 export async function generateFullReportFile(
   suggestions: GenerateRestockSuggestionsOutput | null,
   missingProducts: MissingProductsOutput[] | null,
-  analysisMode: "sales" | "levels" | "cross",
+  analysisMode: "sales" | "levels" | "cross" | "shelfLife",
   crossResults?: any[] | null,
+  shelfLifeResults?: any[] | null,
 ): Promise<{ data?: { file: string; filename: string }; error?: string }> {
   try {
     const wb = XLSX.utils.book_new();
 
+    // REPORTE VIDA ÚTIL
+    if (analysisMode === "shelfLife" && shelfLifeResults?.length) {
+      const sheetData = shelfLifeResults.map((item: any) => ({
+        SKU: item.sku,
+        Descripción: item.descripcion,
+        LPN: item.lpn,
+        Ubicación: item.localizacion,
+        Lote: item.lote || "S/L",
+        "Fecha de Vencimiento": item.fechaVencimiento || "S/F",
+        "Días Actuales (FPC)": item.diasFPC,
+        "Vida Útil Límite": item.diasMinimosMaestra,
+        Estado: item.cumple ? "✅ OK" : "❌ EXCEDIDO",
+      }));
+
+      const ws = XLSX.utils.json_to_sheet(sheetData);
+      aplicarEstilosModernos(ws, {
+        columnaEstado: Object.keys(sheetData[0]).indexOf("Estado"),
+      });
+      XLSX.utils.book_append_sheet(wb, ws, "Vida Útil");
+    }
+
     // REPORTE CRUCE
-    if (analysisMode === "cross" && crossResults?.length) {
+    else if (analysisMode === "cross" && crossResults?.length) {
       const sortedCrossResults = [...crossResults].sort(
         (a, b) => b.diferencia - a.diferencia,
       );
@@ -856,10 +955,14 @@ export async function generateFullReportFile(
       return { error: "📄 No hay datos para exportar." };
 
     const timestamp = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-    const filename =
-      analysisMode === "cross"
-        ? `Cruce_Inventarios_${timestamp}.xlsx`
-        : `Reporte_Surtido_${timestamp}.xlsx`;
+    let filename = "";
+    if (analysisMode === "cross") {
+      filename = `Cruce_Inventarios_${timestamp}.xlsx`;
+    } else if (analysisMode === "shelfLife") {
+      filename = `Reporte_VidaUtil_${timestamp}.xlsx`;
+    } else {
+      filename = `Reporte_Surtido_${timestamp}.xlsx`;
+    }
 
     return {
       data: {

@@ -2,40 +2,25 @@
 
 import { useState, useMemo } from "react";
 import {
-  Bot,
-  FileWarning,
   Loader2,
   Warehouse,
   AlertTriangle,
   Download,
-  Settings,
   ChevronDown,
   RefreshCcw,
-  FileSearch,
-  Sparkles,
   TrendingUp,
   BarChart3,
   GitCompare,
   Zap,
-  Filter,
   Layers,
   Upload,
   FileText,
   FileSpreadsheet,
   Database,
-  CheckCircle2,
   Clock,
-  Calendar,
   Activity,
-  ArrowRight,
   Menu,
   X,
-  Moon,
-  Sun,
-  Bell,
-  User,
-  LogOut,
-  HelpCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -52,6 +37,8 @@ import {
 import type {
   GenerateRestockSuggestionsOutput,
   MissingProductsOutput,
+  InventoryCrossResult,
+  ShelfLifeResult,
 } from "@/ai/flows/schemas";
 import { Logo } from "@/components/icons";
 import { ResultsTable } from "@/components/results-table";
@@ -59,6 +46,7 @@ import { MissingStockTable } from "@/components/missing-stock-table";
 import { InventoryCrossTable } from "@/components/inventory-cross-table";
 import { InboundMapper } from "@/components/inbound-mapper";
 import { InboundResultsTable } from "@/components/inbound-results-table";
+import { ShelfLifeTable } from "@/components/shelf-life-table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   DropdownMenu,
@@ -79,6 +67,7 @@ import {
   minMaxColumnMapping,
   sapInventoryMapping,
   wmsInventoryCrossMapping,
+  shelfLifeColumnMapping,
 } from "./config";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -92,13 +81,16 @@ import {
 
 export default function Home() {
   const [analysisMode, setAnalysisMode] = useState<
-    "sales" | "levels" | "cross" | "inbound"
+    "sales" | "levels" | "cross" | "inbound" | "shelfLife"
   >("sales");
   const [salesData, setSalesData] = useState<any[] | null>(null);
   const [inventoryData, setInventoryData] = useState<any[] | null>(null);
   const [minMaxData, setMinMaxData] = useState<any[] | null>(null);
   const [sapData, setSapData] = useState<any[] | null>(null);
   const [wmsData, setWmsData] = useState<any[] | null>(null);
+  const [shelfLifeMasterData, setShelfLifeMasterData] = useState<any[] | null>(
+    null,
+  );
   const [groupByLot, setGroupByLot] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [theme, setTheme] = useState<"light" | "dark">("light");
@@ -121,7 +113,10 @@ export default function Home() {
   const [missingProducts, setMissingProducts] = useState<
     MissingProductsOutput[] | null
   >(null);
-  const [crossResults, setCrossResults] = useState<any | null>(null);
+  const [crossResults, setCrossResults] = useState<InventoryCrossResult | null>(
+    null,
+  );
+  const [shelfLifeResults, setShelfLifeResults] = useState<any[] | null>(null);
 
   const [isLoading, setIsLoading] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -140,6 +135,7 @@ export default function Home() {
     setMissingProducts(null);
     setCrossResults(null);
     setSortConfig(null);
+    setShelfLifeResults(null);
 
     // Resetear resultados específicos de inbound
     if (mode === "inbound") {
@@ -176,7 +172,7 @@ export default function Home() {
       if (type === "sales") {
         mapping = salesColumnMapping;
         numericCols = ["cantidadConfirmada"];
-      } else if (type === "inventory") {
+      } else if (type === "inventory" || type === "inventoryWms") {
         mapping = inventoryColumnMapping;
         numericCols = ["disponible", "diasFPC"];
       } else if (type === "minMax") {
@@ -185,6 +181,9 @@ export default function Home() {
       } else if (type === "sap") {
         mapping = sapInventoryMapping;
         numericCols = ["cantidad"];
+      } else if (type === "shelfLife") {
+        mapping = shelfLifeColumnMapping;
+        numericCols = ["diasMinimos"];
       } else {
         // wms
         mapping = wmsInventoryCrossMapping;
@@ -213,10 +212,14 @@ export default function Home() {
         if (analysisMode === "sales") {
           resetResultsForMode(analysisMode);
         }
-      } else if (type === "inventory") {
+      } else if (type === "inventory" || type === "inventoryWms") {
         setInventoryData(data);
-        // Resetear resultados si estamos en modo sales o levels (que usan inventoryData)
-        if (analysisMode === "sales" || analysisMode === "levels") {
+        // Resetear resultados si estamos en modo sales, levels o shelfLife (que usan inventoryData)
+        if (
+          analysisMode === "sales" ||
+          analysisMode === "levels" ||
+          analysisMode === "shelfLife"
+        ) {
           resetResultsForMode(analysisMode);
         }
       } else if (type === "minMax") {
@@ -237,6 +240,12 @@ export default function Home() {
         if (analysisMode === "cross") {
           resetResultsForMode(analysisMode);
         }
+      } else if (type === "shelfLife") {
+        setShelfLifeMasterData(data);
+        // Resetear resultados si estamos en modo shelfLife
+        if (analysisMode === "shelfLife") {
+          resetResultsForMode(analysisMode);
+        }
       }
 
       toast({
@@ -245,11 +254,6 @@ export default function Home() {
         className:
           "bg-gradient-to-r from-green-300 to-green-400 text-white border-0 shadow-lg",
       });
-
-      // Ya no reseteamos aquí porque lo hacemos específicamente según el tipo
-      // setSuggestions(null);
-      // setMissingProducts(null);
-      // setCrossResults(null);
     } catch (error) {
       toast({
         variant: "destructive",
@@ -277,6 +281,8 @@ export default function Home() {
       setSapData(null);
     } else if (type === "wms") {
       setWmsData(null);
+    } else if (type === "shelfLife") {
+      setShelfLifeMasterData(null);
     } else if (type === "inbound") {
       setRawInbound(null);
     }
@@ -314,6 +320,7 @@ export default function Home() {
         null,
         null,
         null,
+        null,
         false,
         {
           rows: rawInbound.rows,
@@ -341,6 +348,60 @@ export default function Home() {
       return;
     }
 
+    // Validación para modo Shelf Life
+    if (analysisMode === "shelfLife") {
+      if (!inventoryData || !shelfLifeMasterData) {
+        return toast({
+          variant: "destructive",
+          title: "❌ Faltan archivos",
+          description:
+            "Carga el inventario y la maestra de vida útil para continuar.",
+          className:
+            "bg-gradient-to-r from-red-300 to-red-400 text-white border-0 shadow-lg",
+        });
+      }
+      setIsLoading(true);
+      setShelfLifeResults(null);
+
+      const result = await runAnalysis(
+        "shelfLife",
+        inventoryData,
+        null,
+        null,
+        null,
+        null,
+        shelfLifeMasterData,
+        false,
+      );
+
+      setIsLoading(false);
+
+      if (result.error) {
+        toast({
+          variant: "destructive",
+          title: "❌ Error en el análisis",
+          description: result.error,
+          className:
+            "bg-gradient-to-r from-red-300 to-red-400 text-white border-0 shadow-lg",
+        });
+      } else if (result.data) {
+        setShelfLifeResults((result.data as ShelfLifeResult).results);
+        const totalItems = (result.data as ShelfLifeResult).results.length;
+        const expiredItems = (result.data as ShelfLifeResult).results.filter(
+          (item) => !item.cumple,
+        ).length;
+
+        toast({
+          title: "✨ Análisis Completado",
+          description: `Se analizaron ${totalItems} lotes. ${expiredItems} exceden la vida útil límite.`,
+          className:
+            "bg-gradient-to-r from-green-300 to-green-400 text-white border-0 shadow-lg",
+        });
+      }
+      return;
+    }
+
+    // Validaciones para otros modos
     if (analysisMode === "sales" && (!salesData || !inventoryData)) {
       return toast({
         variant: "destructive",
@@ -374,6 +435,7 @@ export default function Home() {
     setMissingProducts(null);
     setCrossResults(null);
     setSortConfig(null);
+    setShelfLifeResults(null);
 
     const result = await runAnalysis(
       analysisMode as any,
@@ -382,6 +444,7 @@ export default function Home() {
       minMaxData,
       sapData,
       wmsData,
+      shelfLifeMasterData,
       groupByLot,
     );
 
@@ -397,63 +460,81 @@ export default function Home() {
       });
     } else if (result.data) {
       if (analysisMode === "cross") {
-        setCrossResults(result.data);
+        setCrossResults(result.data as InventoryCrossResult);
+
+        const totalDiff = (result.data as InventoryCrossResult).results.reduce(
+          (sum, item) => sum + Math.abs(item.diferencia),
+          0,
+        );
+
+        toast({
+          title: "✨ Análisis Completado",
+          description: `Se encontraron ${(result.data as InventoryCrossResult).results.length} discrepancias. Diferencia total: ${totalDiff} unidades.`,
+          className:
+            "bg-gradient-to-r from-green-300 to-green-400 text-white border-0 shadow-lg",
+        });
       } else {
         setSuggestions((result.data as any).suggestions);
         setMissingProducts((result.data as any).missingProducts);
-      }
-      let actionableSuggestions = 0;
-      let toastDescription = "";
 
-      if (
-        "suggestions" in result.data &&
-        Array.isArray(result.data.suggestions)
-      ) {
-        actionableSuggestions = result.data.suggestions.filter(
-          (s) => s.cantidadARestockear > 0,
-        ).length;
-      }
+        let actionableSuggestions = 0;
+        let toastDescription = "";
 
-      if (analysisMode === "levels") {
-        if (actionableSuggestions > 0) {
-          toastDescription = `🎯 ${actionableSuggestions} oportunidades de surtido identificadas`;
-        } else {
-          toastDescription =
-            "✅ Niveles de stock óptimos - No se requieren ajustes";
-        }
-      } else if (analysisMode === "sales") {
-        if (actionableSuggestions > 0) {
-          toastDescription += `📈 ${actionableSuggestions} sugerencias de surtido generadas. `;
-        }
         if (
-          "missingProducts" in result.data &&
-          Array.isArray(result.data.missingProducts) &&
-          result.data.missingProducts.length > 0
+          "suggestions" in result.data &&
+          Array.isArray(result.data.suggestions)
         ) {
-          toastDescription += `⚠️ ${result.data.missingProducts.length} productos sin stock`;
+          actionableSuggestions = result.data.suggestions.filter(
+            (s) => s.cantidadARestockear > 0,
+          ).length;
         }
-        if (toastDescription === "") {
-          toastDescription =
-            "✅ Análisis completado - Sin discrepancias críticas";
+
+        if (analysisMode === "levels") {
+          if (actionableSuggestions > 0) {
+            toastDescription = `🎯 ${actionableSuggestions} oportunidades de surtido identificadas`;
+          } else {
+            toastDescription =
+              "✅ Niveles de stock óptimos - No se requieren ajustes";
+          }
+        } else if (analysisMode === "sales") {
+          if (actionableSuggestions > 0) {
+            toastDescription = `📈 ${actionableSuggestions} sugerencias de surtido generadas. `;
+          }
+          if (
+            "missingProducts" in result.data &&
+            Array.isArray(result.data.missingProducts) &&
+            result.data.missingProducts.length > 0
+          ) {
+            toastDescription += `⚠️ ${result.data.missingProducts.length} productos sin stock`;
+          }
+          if (toastDescription === "") {
+            toastDescription =
+              "✅ Análisis completado - Sin discrepancias críticas";
+          }
         }
+
+        toast({
+          title: "✨ Análisis Completado",
+          description: toastDescription,
+          className:
+            "bg-gradient-to-r from-green-300 to-green-400 text-white border-0 shadow-lg",
+        });
       }
-      toast({
-        title: "✨ Análisis Completado",
-        description: toastDescription,
-        className:
-          "bg-gradient-to-r from-green-300 to-green-400 text-white border-0 shadow-lg",
-      });
     }
   };
 
   const handleDownloadReport = async () => {
     setIsDownloading(true);
+
+    // Para shelf life, pasar los resultados específicos
     const result = await generateFullReportFile(
       suggestions,
       missingProducts,
       analysisMode as any,
       crossResults?.results,
+      shelfLifeResults,
     );
+
     setIsDownloading(false);
 
     if (result.error) {
@@ -489,13 +570,25 @@ export default function Home() {
       downloadFile(
         file,
         filename,
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.ms-excel", // Cambiado a application/vnd.ms-excel para .xls
       );
       toast({
         title: "📥 Archivo WMS Descargado",
         description: "El archivo se ha guardado en tu dispositivo",
         className:
           "bg-gradient-to-r from-green-300 to-green-400 text-white border-0 shadow-lg",
+      });
+      return;
+    }
+
+    // Para shelf life no hay archivos WMS
+    if (analysisMode === "shelfLife") {
+      toast({
+        variant: "destructive",
+        title: "❌ No aplicable",
+        description: "El análisis de vida útil no genera archivos WMS.",
+        className:
+          "bg-gradient-to-r from-red-300 to-red-400 text-white border-0 shadow-lg",
       });
       return;
     }
@@ -529,7 +622,7 @@ export default function Home() {
       downloadFile(
         result.data.file,
         result.data.filename,
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.ms-excel",
       );
       toast({
         title: "📥 Archivo WMS Descargado",
@@ -541,6 +634,12 @@ export default function Home() {
   };
 
   const handleDownloadBoth = async () => {
+    // No aplicable para shelf life
+    if (analysisMode === "shelfLife") {
+      handleDownloadReport();
+      return;
+    }
+
     setIsDownloading(true);
 
     try {
@@ -550,6 +649,7 @@ export default function Home() {
         missingProducts,
         analysisMode as any,
         crossResults?.results,
+        shelfLifeResults,
       );
 
       if (fullReport.error) {
@@ -592,7 +692,7 @@ export default function Home() {
             downloadFile(
               wmsFiles.data!.file,
               wmsFiles.data!.filename,
-              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+              "application/vnd.ms-excel",
             );
           }, 500);
         }
@@ -628,6 +728,7 @@ export default function Home() {
   const hasResults = useMemo(() => {
     if (analysisMode === "cross") return !!crossResults;
     if (analysisMode === "inbound") return !!inboundResults;
+    if (analysisMode === "shelfLife") return !!shelfLifeResults;
     return !!(suggestions || missingProducts);
   }, [
     suggestions,
@@ -635,6 +736,7 @@ export default function Home() {
     crossResults,
     inboundResults,
     analysisMode,
+    shelfLifeResults,
   ]);
 
   const getModeIcon = () => {
@@ -647,6 +749,8 @@ export default function Home() {
         return <GitCompare className="h-5 w-5" />;
       case "inbound":
         return <Upload className="h-5 w-5" />;
+      case "shelfLife":
+        return <Clock className="h-5 w-5" />;
     }
   };
 
@@ -660,6 +764,8 @@ export default function Home() {
         return "from-slate-500 to-slate-600";
       case "inbound":
         return "from-amber-500 to-orange-500";
+      case "shelfLife":
+        return "from-red-500 to-red-600";
     }
   };
 
@@ -673,6 +779,8 @@ export default function Home() {
         return "bg-slate-500";
       case "inbound":
         return "bg-amber-500";
+      case "shelfLife":
+        return "bg-red-500";
     }
   };
 
@@ -735,6 +843,13 @@ export default function Home() {
                   Entradas
                 </TabsTrigger>
                 <TabsTrigger
+                  value="shelfLife"
+                  className="text-xs font-medium rounded-lg px-4 py-2 data-[state=active]:bg-white data-[state=active]:text-red-600 data-[state=active]:shadow-md transition-all duration-200 text-slate-600"
+                >
+                  <Clock className="h-3.5 w-3.5 mr-2" />
+                  Vida Útil
+                </TabsTrigger>
+                <TabsTrigger
                   value="cross"
                   className="text-xs font-medium rounded-lg px-4 py-2 data-[state=active]:bg-white data-[state=active]:text-slate-600 data-[state=active]:shadow-md transition-all duration-200 text-slate-600"
                 >
@@ -778,7 +893,9 @@ export default function Home() {
                       (!salesData || !inventoryData)) ||
                     (analysisMode === "levels" &&
                       (!inventoryData || !minMaxData)) ||
-                    (analysisMode === "cross" && (!sapData || !wmsData))
+                    (analysisMode === "cross" && (!sapData || !wmsData)) ||
+                    (analysisMode === "shelfLife" &&
+                      (!inventoryData || !shelfLifeMasterData))
                   }
                   size="default"
                   className={cn(
@@ -857,24 +974,27 @@ export default function Home() {
                       </DropdownMenuItem>
                     )}
 
-                    <DropdownMenuItem
-                      onClick={handleDownloadWMS}
-                      className="flex items-center gap-3 py-3 px-3 cursor-pointer hover:bg-emerald-50 rounded-lg transition-all group"
-                    >
-                      <div className="p-2 bg-emerald-100 rounded-lg group-hover:bg-emerald-200 transition-colors">
-                        <FileText className="h-5 w-5 text-emerald-500" />
-                      </div>
-                      <div className="flex-1">
-                        <p className="font-semibold text-slate-700">
-                          {analysisMode === "inbound"
-                            ? "Plantilla Entradas WMS"
-                            : "Archivo WMS"}
-                        </p>
-                        <p className="text-xs text-slate-500">
-                          Formato para sistema de almacén
-                        </p>
-                      </div>
-                    </DropdownMenuItem>
+                    {analysisMode !== "shelfLife" &&
+                      analysisMode !== "cross" && (
+                        <DropdownMenuItem
+                          onClick={handleDownloadWMS}
+                          className="flex items-center gap-3 py-3 px-3 cursor-pointer hover:bg-emerald-50 rounded-lg transition-all group"
+                        >
+                          <div className="p-2 bg-emerald-100 rounded-lg group-hover:bg-emerald-200 transition-colors">
+                            <FileText className="h-5 w-5 text-emerald-500" />
+                          </div>
+                          <div className="flex-1">
+                            <p className="font-semibold text-slate-700">
+                              {analysisMode === "inbound"
+                                ? "Plantilla Entradas WMS"
+                                : "Archivo WMS"}
+                            </p>
+                            <p className="text-xs text-slate-500">
+                              Formato para sistema de almacén
+                            </p>
+                          </div>
+                        </DropdownMenuItem>
+                      )}
 
                     {(analysisMode === "sales" ||
                       analysisMode === "levels") && (
@@ -957,6 +1077,9 @@ export default function Home() {
                   <TabsTrigger value="inbound" className="text-xs">
                     Entradas
                   </TabsTrigger>
+                  <TabsTrigger value="shelfLife" className="text-xs">
+                    Vida Útil
+                  </TabsTrigger>
                 </TabsList>
               </Tabs>
 
@@ -1000,7 +1123,9 @@ export default function Home() {
                       ? "Surtido por Niveles"
                       : analysisMode === "cross"
                         ? "Cruce SAP vs WMS"
-                        : "Entradas de Mercancía"}
+                        : analysisMode === "inbound"
+                          ? "Entradas de Mercancía"
+                          : "Análisis de Vida Útil"}
                 </h2>
                 <p className="text-xs text-slate-500">
                   {analysisMode === "sales" &&
@@ -1011,6 +1136,8 @@ export default function Home() {
                     "Identifica discrepancias entre sistemas SAP y WMS"}
                   {analysisMode === "inbound" &&
                     "Transforma archivos de proveedores a formato WMS"}
+                  {analysisMode === "shelfLife" &&
+                    "Evalúa lotes contra días mínimos de vida útil"}
                 </p>
               </div>
             </div>
@@ -1082,6 +1209,22 @@ export default function Home() {
                 />
               </div>
             )}
+            {analysisMode === "shelfLife" && (
+              <>
+                <FileUploader
+                  title="Inventario (WMS)"
+                  onFileRead={(c) => handleFileRead(c, "inventory")}
+                  onFileReset={() => handleFileReset("inventory")}
+                  recordCount={inventoryData?.length}
+                />
+                <FileUploader
+                  title="Maestra Vida Útil (FPC)"
+                  onFileRead={(c) => handleFileRead(c, "shelfLife")}
+                  onFileReset={() => handleFileReset("shelfLife")}
+                  recordCount={shelfLifeMasterData?.length}
+                />
+              </>
+            )}
           </div>
 
           {/* Tarjeta de Resultados */}
@@ -1111,91 +1254,46 @@ export default function Home() {
                 </div>
               ) : hasResults ? (
                 <div className="space-y-8">
-                  {missingProducts && missingProducts.length > 0 && (
+                  {analysisMode === "shelfLife" && shelfLifeResults && (
                     <div>
-                      <div className="flex items-center justify-between mb-6">
-                        <div className="flex items-center gap-3">
-                          <div className="p-2 bg-rose-50 rounded-xl border border-rose-200">
-                            <AlertTriangle className="h-6 w-6 text-rose-500" />
-                          </div>
-                          <div>
-                            <h3 className="text-xl font-bold text-rose-600">
-                              Faltantes Críticos
-                            </h3>
-                            <p className="text-sm text-rose-500">
-                              Productos que requieren atención inmediata
-                            </p>
-                          </div>
-                        </div>
-                        <Badge
-                          variant="destructive"
-                          className="px-3 py-1.5 text-sm font-medium bg-gradient-to-r from-rose-500 to-pink-500 text-white shadow-lg"
-                        >
-                          {missingProducts.length} alertas
-                        </Badge>
-                      </div>
-                      <div className="border border-rose-200 rounded-xl overflow-hidden bg-rose-50/50 shadow-inner">
-                        <MissingStockTable products={missingProducts} />
+                      <div className="border border-amber-200 rounded-xl overflow-hidden bg-amber-50/50 shadow-inner">
+                        <ShelfLifeTable data={shelfLifeResults} />
                       </div>
                     </div>
                   )}
-                  {suggestions && suggestions.length > 0 && (
-                    <div>
-                      <div className="flex items-center justify-between mb-6">
-                        <div className="flex items-center gap-3">
-                          <div className="p-2 bg-blue-50 rounded-xl border border-blue-200">
-                            <TrendingUp className="h-6 w-6 text-blue-500" />
-                          </div>
-                          <div>
-                            <h3 className="text-xl font-bold text-blue-600">
-                              Sugerencias de Surtido
-                            </h3>
-                            <p className="text-sm text-blue-500">
-                              Oportunidades de optimización identificadas
-                            </p>
-                          </div>
+
+                  {missingProducts &&
+                    missingProducts.length > 0 &&
+                    analysisMode !== "shelfLife" && (
+                      <div>
+                        <div className="border border-rose-200 rounded-xl overflow-hidden bg-rose-50/50 shadow-inner">
+                          <MissingStockTable products={missingProducts} />
                         </div>
-                        <Badge className="px-3 py-1.5 text-sm font-medium bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-lg">
-                          {suggestions.length} oportunidades
-                        </Badge>
                       </div>
-                      <div className="border border-blue-200 rounded-xl overflow-hidden bg-blue-50/50 shadow-inner">
-                        <ResultsTable
-                          results={suggestions}
-                          analysisMode={analysisMode as any}
-                        />
-                      </div>
-                    </div>
-                  )}
-                  {crossResults && (
-                    <div>
-                      <div className="flex items-center justify-between mb-6">
-                        <div className="flex items-center gap-3">
-                          <div className="p-2 bg-slate-50 rounded-xl border border-slate-200">
-                            <GitCompare className="h-6 w-6 text-slate-500" />
-                          </div>
-                          <div>
-                            <h3 className="text-xl font-bold text-slate-600">
-                              Discrepancias SAP vs WMS
-                            </h3>
-                            <p className="text-sm text-slate-500">
-                              Comparación entre sistemas de inventario
-                            </p>
-                          </div>
+                    )}
+
+                  {suggestions &&
+                    suggestions.length > 0 &&
+                    analysisMode !== "shelfLife" && (
+                      <div>
+                        <div className="border border-blue-200 rounded-xl overflow-hidden bg-blue-50/50 shadow-inner">
+                          <ResultsTable
+                            results={suggestions}
+                            analysisMode={analysisMode as any}
+                          />
                         </div>
-                        <Badge
-                          variant="outline"
-                          className="px-3 py-1.5 text-sm font-medium border-slate-300 text-slate-600 bg-slate-50 shadow-sm"
-                        >
-                          {crossResults.results?.length || 0} diferencias
-                        </Badge>
                       </div>
+                    )}
+
+                  {crossResults && analysisMode === "cross" && (
+                    <div>
                       <div className="border border-slate-200 rounded-xl overflow-hidden bg-slate-50/50 shadow-inner">
                         <InventoryCrossTable data={crossResults} />
                       </div>
                     </div>
                   )}
-                  {inboundResults && (
+
+                  {inboundResults && analysisMode === "inbound" && (
                     <InboundResultsTable data={inboundResults} />
                   )}
                 </div>
@@ -1224,6 +1322,8 @@ export default function Home() {
                         "Optimiza tus niveles de stock"}
                       {analysisMode === "inbound" &&
                         "Mapea tus entradas de mercancía"}
+                      {analysisMode === "shelfLife" &&
+                        "Analiza la vida útil de tu inventario"}
                     </h3>
                     <p className="text-slate-500">
                       {analysisMode === "cross" &&
@@ -1234,6 +1334,8 @@ export default function Home() {
                         "Sube el inventario actual y los parámetros mín/máx"}
                       {analysisMode === "inbound" &&
                         "Carga el archivo del proveedor para transformarlo al formato WMS"}
+                      {analysisMode === "shelfLife" &&
+                        "Carga el inventario WMS y la maestra de vida útil para evaluar lotes"}
                     </p>
                     <div className="flex items-center justify-center gap-2 mt-4">
                       <div className="h-2 w-2 rounded-full bg-blue-400 animate-pulse"></div>

@@ -38,7 +38,6 @@ import {
   ArrowUpDown,
   FileJson,
   FileSpreadsheet,
-  FileText,
   Copy,
   Check,
   Maximize2,
@@ -49,24 +48,20 @@ import {
   AlertCircle,
   CheckCircle2,
   Eye,
-  EyeOff,
   Package,
-  TrendingUp,
-  TrendingDown,
-  Minus,
+  Clock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { InventoryCrossResult } from "@/ai/flows/schemas";
 
-interface InventoryCrossTableProps {
-  data: InventoryCrossResult;
+interface ShelfLifeTableProps {
+  data: any[];
   title?: string;
 }
 
-export function InventoryCrossTable({
+export function ShelfLifeTable({
   data,
-  title = "Cruce de Inventarios SAP vs WMS",
-}: InventoryCrossTableProps) {
+  title = "Análisis de Vida Útil",
+}: ShelfLifeTableProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [sortConfig, setSortConfig] = useState<{
     key: string;
@@ -76,12 +71,11 @@ export function InventoryCrossTable({
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
   const [copiedRow, setCopiedRow] = useState<number | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [showFilters, setShowFilters] = useState(false);
   const [columnFilters, setColumnFilters] = useState<Record<string, string>>(
     {},
   );
 
-  if (!data.results || data.results.length === 0) {
+  if (!data || data.length === 0) {
     return (
       <div className="w-full rounded-xl border shadow-sm bg-white p-12">
         <div className="flex flex-col items-center justify-center text-center">
@@ -92,7 +86,7 @@ export function InventoryCrossTable({
             No hay datos disponibles
           </h3>
           <p className="text-sm text-slate-500 max-w-md">
-            No se encontraron resultados para el cruce de inventarios.
+            No se encontraron resultados para el análisis de vida útil.
           </p>
         </div>
       </div>
@@ -102,17 +96,17 @@ export function InventoryCrossTable({
   // Definir headers
   const headers = [
     { key: "sku", label: "SKU" },
-    { key: "lote", label: "Lote" },
     { key: "descripcion", label: "Descripción" },
-    { key: "cantidadSap", label: "Stock SAP" },
-    { key: "cantidadWms", label: "Stock WMS" },
-    { key: "diferencia", label: "Diferencia" },
+    { key: "lpn", label: "LPN" },
+    { key: "localizacion", label: "Ubicación" },
+    { key: "diasFPC", label: "Días Actuales (FPC)" },
+    { key: "diasMinimosMaestra", label: "Vida Útil Límite" },
     { key: "estado", label: "Estado" },
   ];
 
   // Filtrar datos por búsqueda y filtros
   const filteredData = useMemo(() => {
-    return data.results.filter((item) => {
+    return data.filter((item) => {
       // Búsqueda global
       const matchesSearch =
         searchTerm === "" ||
@@ -132,7 +126,7 @@ export function InventoryCrossTable({
 
       return matchesSearch && matchesColumnFilters;
     });
-  }, [data.results, searchTerm, columnFilters]);
+  }, [data, searchTerm, columnFilters]);
 
   // Ordenar datos
   const sortedData = useMemo(() => {
@@ -230,7 +224,7 @@ export function InventoryCrossTable({
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `inventario_${new Date().toISOString().slice(0, 10)}.csv`;
+      a.download = `vida_util_${new Date().toISOString().slice(0, 10)}.csv`;
       a.click();
     } else if (format === "json") {
       const jsonContent = JSON.stringify(sortedData, null, 2);
@@ -238,7 +232,7 @@ export function InventoryCrossTable({
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `inventario_${new Date().toISOString().slice(0, 10)}.json`;
+      a.download = `vida_util_${new Date().toISOString().slice(0, 10)}.json`;
       a.click();
     }
   };
@@ -256,40 +250,24 @@ export function InventoryCrossTable({
 
   // Estadísticas
   const stats = useMemo(() => {
-    const total = data.results.length;
-    const discrepancias = data.results.filter(
-      (item) => item.diferencia !== 0,
-    ).length;
-    const ok = total - discrepancias;
-    const porcentaje = total > 0 ? (ok / total) * 100 : 0;
+    const total = data.length;
+    const excedidos = data.filter((item) => !item.cumple).length;
+    const validos = total - excedidos;
+    const porcentaje = total > 0 ? (validos / total) * 100 : 0;
 
-    const totalSap = data.results.reduce(
-      (sum, item) => sum + item.cantidadSap,
-      0,
-    );
-    const totalWms = data.results.reduce(
-      (sum, item) => sum + item.cantidadWms,
-      0,
-    );
-    const diferenciaTotal = totalSap - totalWms;
+    const promedioDiasFPC =
+      total > 0
+        ? data.reduce((sum, item) => sum + (item.diasFPC || 0), 0) / total
+        : 0;
 
     return {
       total,
-      discrepancias,
-      ok,
+      excedidos,
+      validos,
       porcentaje,
-      totalSap,
-      totalWms,
-      diferenciaTotal,
+      promedioDiasFPC,
     };
-  }, [data.results]);
-
-  const getDiferenciaIcon = (diferencia: number) => {
-    if (diferencia > 0) return <TrendingUp className="h-3 w-3 text-blue-500" />;
-    if (diferencia < 0)
-      return <TrendingDown className="h-3 w-3 text-destructive" />;
-    return <Minus className="h-3 w-3 text-slate-400" />;
-  };
+  }, [data]);
 
   return (
     <TooltipProvider>
@@ -313,8 +291,8 @@ export function InventoryCrossTable({
               <div className="flex flex-col gap-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="p-2.5 bg-gradient-to-br from-primary/10 to-primary/5 rounded-xl">
-                      <Package className="h-4 w-4 text-primary" />
+                    <div className="p-2.5 bg-gradient-to-br from-blue-500/10 to-blue-500/5 rounded-xl">
+                      <Clock className="h-4 w-4 text-blue-500" />
                     </div>
                     <div>
                       <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
@@ -323,7 +301,7 @@ export function InventoryCrossTable({
                           variant="secondary"
                           className="text-[10px] px-1.5"
                         >
-                          Cruce
+                          Vida Útil
                         </Badge>
                       </h3>
                       <div className="flex items-center gap-2 text-xs text-slate-500">
@@ -462,39 +440,32 @@ export function InventoryCrossTable({
                         className="gap-1.5 px-2 py-0.5 text-[10px]"
                       >
                         <CheckCircle2 className="h-3 w-3 text-green-500" />
-                        OK: {stats.ok}
+                        Válidos: {stats.validos}
                       </Badge>
                       <Badge
                         variant="outline"
                         className="gap-1.5 px-2 py-0.5 text-[10px]"
                       >
                         <AlertCircle className="h-3 w-3 text-destructive" />
-                        Discrepancias: {stats.discrepancias}
+                        Excedidos: {stats.excedidos}
                       </Badge>
                       <Badge
                         variant="outline"
                         className="gap-1.5 px-2 py-0.5 text-[10px]"
                       >
-                        {stats.diferenciaTotal > 0 ? (
-                          <TrendingUp className="h-3 w-3 text-blue-500" />
-                        ) : stats.diferenciaTotal < 0 ? (
-                          <TrendingDown className="h-3 w-3 text-destructive" />
-                        ) : (
-                          <Minus className="h-3 w-3 text-slate-400" />
-                        )}
-                        Diferencia total:{" "}
-                        {Math.abs(stats.diferenciaTotal).toLocaleString()}
+                        <Clock className="h-3 w-3 text-blue-500" />
+                        Promedio: {Math.round(stats.promedioDiasFPC)} días
                       </Badge>
                     </div>
                     <span className="text-xs font-medium">
-                      {Math.round(stats.porcentaje)}% conciliado
+                      {Math.round(stats.porcentaje)}% válido
                     </span>
                   </div>
                   <Progress
                     value={stats.porcentaje}
                     className={cn(
                       "h-2",
-                      stats.porcentaje === 100 ? "bg-green-500" : "bg-primary",
+                      stats.porcentaje === 100 ? "bg-green-500" : "bg-blue-500",
                     )}
                   />
                 </div>
@@ -542,10 +513,10 @@ export function InventoryCrossTable({
                       const isSortable = [
                         "sku",
                         "descripcion",
-                        "lote",
-                        "cantidadSap",
-                        "cantidadWms",
-                        "diferencia",
+                        "lpn",
+                        "localizacion",
+                        "diasFPC",
+                        "diasMinimosMaestra",
                         "estado",
                       ].includes(header.key);
 
@@ -554,9 +525,8 @@ export function InventoryCrossTable({
                           key={header.key}
                           className={cn(
                             "text-[11px] font-bold text-slate-700 uppercase py-3 px-4 border-b whitespace-nowrap bg-inherit text-center",
-                            (header.key === "cantidadSap" ||
-                              header.key === "cantidadWms" ||
-                              header.key === "diferencia") &&
+                            (header.key === "diasFPC" ||
+                              header.key === "diasMinimosMaestra") &&
                               "text-center",
                             sortConfig?.key === header.key &&
                               isSortable &&
@@ -615,21 +585,15 @@ export function InventoryCrossTable({
                     </TableRow>
                   ) : (
                     sortedData.map((item, index) => {
-                      const hasDiff = item.diferencia !== 0;
-                      const originalIndex = data.results.findIndex(
-                        (r) => r.sku === item.sku && r.lote === item.lote,
-                      );
+                      const isExcedido = !item.cumple;
 
                       return (
-                        <React.Fragment
-                          key={`${item.sku}-${item.lote}-${index}`}
-                        >
+                        <React.Fragment key={index}>
                           <TableRow
                             className={cn(
                               "hover:bg-slate-50/80 transition-colors group",
-                              expandedRows.has(originalIndex) &&
-                                "bg-slate-50/50",
-                              hasDiff &&
+                              expandedRows.has(index) && "bg-slate-50/50",
+                              isExcedido &&
                                 "bg-destructive/5 hover:bg-destructive/10",
                             )}
                           >
@@ -638,9 +602,9 @@ export function InventoryCrossTable({
                                 variant="ghost"
                                 size="sm"
                                 className="h-6 w-6 p-0"
-                                onClick={() => toggleRow(originalIndex)}
+                                onClick={() => toggleRow(index)}
                               >
-                                {expandedRows.has(originalIndex) ? (
+                                {expandedRows.has(index) ? (
                                   <ChevronUp className="h-3.5 w-3.5" />
                                 ) : (
                                   <ChevronDown className="h-3.5 w-3.5" />
@@ -658,18 +622,18 @@ export function InventoryCrossTable({
                                     <div className="flex justify-center">
                                       <Badge
                                         variant={
-                                          hasDiff ? "destructive" : "outline"
+                                          isExcedido ? "destructive" : "outline"
                                         }
                                         className={cn(
                                           "text-[10px] px-2 py-0.5 gap-1",
-                                          !hasDiff &&
+                                          !isExcedido &&
                                             "bg-green-100 text-green-700 border-green-200",
                                         )}
                                       >
-                                        {hasDiff ? (
+                                        {isExcedido ? (
                                           <>
                                             <AlertCircle className="h-2.5 w-2.5" />
-                                            Discrepancia
+                                            EXCEDIDO
                                           </>
                                         ) : (
                                           <>
@@ -683,37 +647,53 @@ export function InventoryCrossTable({
                                 );
                               }
 
-                              if (header.key === "diferencia") {
+                              if (header.key === "lpn") {
                                 return (
                                   <TableCell
                                     key={header.key}
-                                    className={cn(
-                                      "text-center font-mono text-xs",
-                                      item.diferencia > 0
-                                        ? "text-blue-600 font-bold"
-                                        : item.diferencia < 0
-                                          ? "text-destructive font-bold"
-                                          : "text-slate-600",
-                                    )}
+                                    className="text-xs py-3 px-4 border-b text-slate-700 font-bold truncate max-w-[150px] text-center"
+                                    title={String(item[header.key] || "")}
                                   >
-                                    <div className="flex items-center justify-center gap-1">
-                                      {getDiferenciaIcon(item.diferencia)}
-                                      {item.diferencia.toLocaleString()}
-                                    </div>
+                                    {item[header.key] || "—"}
                                   </TableCell>
                                 );
                               }
 
-                              if (
-                                header.key === "cantidadSap" ||
-                                header.key === "cantidadWms"
-                              ) {
+                              if (header.key === "localizacion") {
                                 return (
                                   <TableCell
                                     key={header.key}
-                                    className="text-center font-mono text-xs text-slate-600"
+                                    className="text-xs py-3 px-4 border-b text-slate-500 truncate max-w-[120px] text-center"
+                                    title={String(item[header.key] || "")}
                                   >
-                                    {item[header.key].toLocaleString()}
+                                    {item[header.key] || "—"}
+                                  </TableCell>
+                                );
+                              }
+
+                              if (header.key === "diasFPC") {
+                                return (
+                                  <TableCell
+                                    key={header.key}
+                                    className={cn(
+                                      "text-xs font-bold text-center py-3 px-4 border-b",
+                                      isExcedido
+                                        ? "text-destructive"
+                                        : "text-emerald-600",
+                                    )}
+                                  >
+                                    {item[header.key]} días
+                                  </TableCell>
+                                );
+                              }
+
+                              if (header.key === "diasMinimosMaestra") {
+                                return (
+                                  <TableCell
+                                    key={header.key}
+                                    className="text-xs font-bold text-slate-400 text-center py-3 px-4 border-b"
+                                  >
+                                    {item[header.key]} días
                                   </TableCell>
                                 );
                               }
@@ -722,11 +702,9 @@ export function InventoryCrossTable({
                                 <TableCell
                                   key={header.key}
                                   className="text-xs py-3 px-4 border-b text-slate-600 truncate max-w-[200px] text-center"
-                                  title={String(
-                                    item[header.key as keyof typeof item] || "",
-                                  )}
+                                  title={String(item[header.key] || "")}
                                 >
-                                  {item[header.key as keyof typeof item] || "—"}
+                                  {item[header.key] || "—"}
                                 </TableCell>
                               );
                             })}
@@ -739,10 +717,10 @@ export function InventoryCrossTable({
                                     size="sm"
                                     className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
                                     onClick={() =>
-                                      copyRowToClipboard(item, originalIndex)
+                                      copyRowToClipboard(item, index)
                                     }
                                   >
-                                    {copiedRow === originalIndex ? (
+                                    {copiedRow === index ? (
                                       <Check className="h-3.5 w-3.5 text-green-500" />
                                     ) : (
                                       <Copy className="h-3.5 w-3.5" />
@@ -756,7 +734,7 @@ export function InventoryCrossTable({
                             </TableCell>
                           </TableRow>
 
-                          {expandedRows.has(originalIndex) && (
+                          {expandedRows.has(index) && (
                             <TableRow className="bg-slate-50/30">
                               <TableCell
                                 colSpan={visibleHeaders.length + 2}
@@ -774,14 +752,6 @@ export function InventoryCrossTable({
                                     </div>
                                     <div className="space-y-1.5 text-center">
                                       <p className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">
-                                        Lote
-                                      </p>
-                                      <div className="text-xs bg-white p-2.5 rounded-lg border break-all shadow-sm">
-                                        {item.lote || "—"}
-                                      </div>
-                                    </div>
-                                    <div className="space-y-1.5 text-center">
-                                      <p className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">
                                         Descripción
                                       </p>
                                       <div className="text-xs bg-white p-2.5 rounded-lg border break-all shadow-sm">
@@ -790,36 +760,41 @@ export function InventoryCrossTable({
                                     </div>
                                     <div className="space-y-1.5 text-center">
                                       <p className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">
-                                        Stock SAP
+                                        LPN
                                       </p>
-                                      <div className="text-xs bg-white p-2.5 rounded-lg border break-all shadow-sm font-mono">
-                                        {item.cantidadSap.toLocaleString()}
+                                      <div className="text-xs bg-white p-2.5 rounded-lg border break-all shadow-sm font-bold">
+                                        {item.lpn || "—"}
                                       </div>
                                     </div>
                                     <div className="space-y-1.5 text-center">
                                       <p className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">
-                                        Stock WMS
+                                        Ubicación
                                       </p>
-                                      <div className="text-xs bg-white p-2.5 rounded-lg border break-all shadow-sm font-mono">
-                                        {item.cantidadWms.toLocaleString()}
+                                      <div className="text-xs bg-white p-2.5 rounded-lg border break-all shadow-sm">
+                                        {item.localizacion || "—"}
                                       </div>
                                     </div>
                                     <div className="space-y-1.5 text-center">
                                       <p className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">
-                                        Diferencia
+                                        Días Actuales (FPC)
                                       </p>
                                       <div
                                         className={cn(
-                                          "text-xs bg-white p-2.5 rounded-lg border break-all shadow-sm font-mono font-bold flex items-center justify-center gap-1",
-                                          item.diferencia > 0
-                                            ? "text-blue-600"
-                                            : item.diferencia < 0
-                                              ? "text-destructive"
-                                              : "",
+                                          "text-xs bg-white p-2.5 rounded-lg border break-all shadow-sm font-mono font-bold",
+                                          isExcedido
+                                            ? "text-destructive"
+                                            : "text-emerald-600",
                                         )}
                                       >
-                                        {getDiferenciaIcon(item.diferencia)}
-                                        {item.diferencia.toLocaleString()}
+                                        {item.diasFPC} días
+                                      </div>
+                                    </div>
+                                    <div className="space-y-1.5 text-center">
+                                      <p className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">
+                                        Vida Útil Límite
+                                      </p>
+                                      <div className="text-xs bg-white p-2.5 rounded-lg border break-all shadow-sm font-mono text-slate-400">
+                                        {item.diasMinimosMaestra} días
                                       </div>
                                     </div>
                                     <div className="space-y-1.5 text-center">
@@ -829,18 +804,20 @@ export function InventoryCrossTable({
                                       <div className="flex justify-center">
                                         <Badge
                                           variant={
-                                            hasDiff ? "destructive" : "outline"
+                                            isExcedido
+                                              ? "destructive"
+                                              : "outline"
                                           }
                                           className={cn(
                                             "text-[10px] gap-1",
-                                            !hasDiff &&
+                                            !isExcedido &&
                                               "bg-green-100 text-green-700 border-green-200",
                                           )}
                                         >
-                                          {hasDiff ? (
+                                          {isExcedido ? (
                                             <>
                                               <AlertCircle className="h-2.5 w-2.5" />
-                                              Discrepancia
+                                              EXCEDIDO
                                             </>
                                           ) : (
                                             <>
@@ -873,10 +850,9 @@ export function InventoryCrossTable({
                     className="gap-1.5 px-2 py-0.5 text-[10px]"
                   >
                     <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-                    Mostrando {sortedData.length} de {data.results.length}{" "}
-                    registros
+                    Mostrando {sortedData.length} de {data.length} registros
                   </Badge>
-                  {sortedData.length < data.results.length && (
+                  {sortedData.length < data.length && (
                     <Badge variant="secondary" className="text-[10px] gap-1">
                       <Filter className="h-3 w-3" />
                       Filtrado
@@ -896,29 +872,26 @@ export function InventoryCrossTable({
                     variant="default"
                     className={cn(
                       "gap-1.5 text-[10px]",
-                      stats.discrepancias === 0
+                      stats.excedidos === 0
                         ? "bg-green-50 text-green-700 border-green-200"
                         : "bg-amber-50 text-amber-700 border-amber-200",
                     )}
                   >
-                    {stats.discrepancias === 0 ? (
+                    {stats.excedidos === 0 ? (
                       <CheckCircle2 className="h-3 w-3" />
                     ) : (
                       <AlertCircle className="h-3 w-3" />
                     )}
-                    {stats.discrepancias}{" "}
-                    {stats.discrepancias === 1
-                      ? "discrepancia"
-                      : "discrepancias"}
+                    {stats.excedidos}{" "}
+                    {stats.excedidos === 1 ? "excedido" : "excedidos"}
                   </Badge>
                   <Badge variant="outline" className="text-[10px] gap-1.5">
                     <Sparkles className="h-3 w-3" />
-                    {Math.round(stats.porcentaje)}% conciliado
+                    {Math.round(stats.porcentaje)}% válido
                   </Badge>
                   <Badge variant="outline" className="text-[10px] gap-1.5">
-                    <Package className="h-3 w-3" />
-                    SAP: {stats.totalSap.toLocaleString()} | WMS:{" "}
-                    {stats.totalWms.toLocaleString()}
+                    <Clock className="h-3 w-3" />
+                    Promedio: {Math.round(stats.promedioDiasFPC)} días
                   </Badge>
                 </div>
               </div>

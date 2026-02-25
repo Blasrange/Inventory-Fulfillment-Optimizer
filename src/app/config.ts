@@ -11,7 +11,7 @@
 export const salesColumnMapping = {
   material: ["Material", "ID de Producto", "codigo", "Material"],
   descripcion: ["Descripción", "Nombre de Artículo"],
-  cantidadConfirmada: ["cantidad confirmada", "Cant. Facturada"],
+  cantidadConfirmada: ["cantidad confirmada", "Cant. Facturada", "Cantidad"],
 };
 
 export const inventoryColumnMapping = {
@@ -22,7 +22,8 @@ export const inventoryColumnMapping = {
   disponible: ["Disponible", "Available"],
   estado: ["Estado", "Status"],
   fechaVencimiento: ["Fecha de vencimiento", "Expiration", "fecha caducidad"],
-  diasFPC: ["FPC", "Days to Exp"],
+  diasFPC: ["FPC", "Days to Exp", 'DIAS FPC'],
+  lote: ['Lote', 'Batch', 'Ce. Lote'],
 };
 
 export const minMaxColumnMapping = {
@@ -31,6 +32,26 @@ export const minMaxColumnMapping = {
   localizacion: ["localizacion", "loc"],
   cantidadMinima: ["cantidad minima", "min"],
   cantidadMaxima: ["cantidad maxima", "max"],
+};
+
+export const shelfLifeColumnMapping = {
+ sku: [
+    'Código de articulo', 
+    'Código de artículo', 
+    'Codigo de articulo', 
+    'Codigo de artículo', 
+    'Material', 
+    'SKU', 
+    'Codigo'
+  ],
+  diasMinimos: [
+    'Vida util del producto', 
+    'Vida útil del producto', 
+    'Vida Util', 
+    'Dias Minimos', 
+    'Requerido', 
+    'VIDA UTIL REQUERIDA'
+  ],
 };
 
 export const sapInventoryMapping = {
@@ -43,6 +64,6 @@ export const sapInventoryMapping = {
 export const wmsInventoryCrossMapping = {
   sku: ["SKU", "Codigo"],
   descripcion: ["Descripcion", "Descripción"],
-  lote: ["Lote"],
+  lote: ["Lote", "Batch", "Ce. Lote"],
   cantidad: ["Disponible", "Unidades"],
 };

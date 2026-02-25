@@ -40,7 +40,8 @@ const inboundFlow = ai.defineFlow(
   async (input) => {
     const { rows, mapping, fixedValues } = input;
 
-    const results = rows.map((row) => {
+    // Procesar filas como antes
+    const processed = rows.map((row) => {
       const getVal = (key: string, defaultValue: any = "") => {
         const val =
           fixedValues[key] || (mapping[key] ? row[mapping[key]] : defaultValue);
@@ -95,6 +96,22 @@ const inboundFlow = ai.defineFlow(
       return entry;
     });
 
+    // Agrupar por SKU y LOTE
+    const grouped: Record<string, any> = {};
+    for (const item of processed) {
+      // Clave única por SKU y LOTE
+      const key = `${item.SKU}||${item.LOTE}`;
+      if (!grouped[key]) {
+        grouped[key] = { ...item };
+      } else {
+        // Sumar QTY y unificar campos (mantener el primero para los demás)
+        grouped[key].QTY += item.QTY;
+        // Si algún campo relevante es diferente, puedes concatenar o mantener el primero
+        // Aquí mantenemos el primero excepto QTY
+      }
+    }
+
+    const results = Object.values(grouped);
     return { results };
   },
 );

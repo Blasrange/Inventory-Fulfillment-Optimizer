@@ -371,7 +371,7 @@ export function InboundResultsTable({
                           variant="secondary"
                           className="text-[10px] px-1.5"
                         >
-                          Beta
+                          WMS
                         </Badge>
                       </h3>
                       <div className="flex items-center gap-2 text-xs text-slate-500">
