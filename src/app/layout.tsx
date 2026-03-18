@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
-import { GoogleAnalytics } from "@next/third-parties/google"; // ✅ IMPORTAR GOOGLE ANALYTICS
+import { GoogleAnalytics } from "@next/third-parties/google";
+import { AnalyticsTracker } from "@/components/analytics-tracker"; // Crearemos este componente
 
 export const metadata: Metadata = {
   title: "Surtido Inteligente",
@@ -30,8 +31,8 @@ export default function RootLayout({
       <body className="font-body antialiased">
         {children}
         <Toaster />
-        {/* ✅ TU GOOGLE ANALYTICS - YA ESTÁ ACTIVO */}
         <GoogleAnalytics gaId="G-XR6B8TDJFQ" />
+        <AnalyticsTracker /> {/* 👈 AÑADE ESTO */}
       </body>
     </html>
   );

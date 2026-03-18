@@ -22,8 +22,8 @@ export const inventoryColumnMapping = {
   disponible: ["Disponible", "Available"],
   estado: ["Estado", "Status"],
   fechaVencimiento: ["Fecha de vencimiento", "Expiration", "fecha caducidad"],
-  diasFPC: ["FPC", "Days to Exp", 'DIAS FPC'],
-  lote: ['Lote', 'Batch', 'Ce. Lote'],
+  diasFPC: ["FPC", "Days to Exp", "DIAS FPC"],
+  lote: ["Lote", "Batch", "Ce. Lote"],
 };
 
 export const minMaxColumnMapping = {
@@ -35,22 +35,22 @@ export const minMaxColumnMapping = {
 };
 
 export const shelfLifeColumnMapping = {
- sku: [
-    'Código de articulo', 
-    'Código de artículo', 
-    'Codigo de articulo', 
-    'Codigo de artículo', 
-    'Material', 
-    'SKU', 
-    'Codigo'
+  sku: [
+    "Código de articulo",
+    "Código de artículo",
+    "Codigo de articulo",
+    "Codigo de artículo",
+    "Material",
+    "SKU",
+    "Codigo",
   ],
   diasMinimos: [
-    'Vida util del producto', 
-    'Vida útil del producto', 
-    'Vida Util', 
-    'Dias Minimos', 
-    'Requerido', 
-    'VIDA UTIL REQUERIDA'
+    "Vida util del producto",
+    "Vida útil del producto",
+    "Vida Util",
+    "Dias Minimos",
+    "Requerido",
+    "VIDA UTIL REQUERIDA",
   ],
 };
 
@@ -58,7 +58,7 @@ export const sapInventoryMapping = {
   sku: ["Material", "Material"],
   descripcion: ["Texto breve material"],
   lote: ["Ce. Lote", "Lote"],
-  cantidad: ["Stock disponible", "WM stock disp."],
+  cantidad: ["Stock disponible", "WM stock disp.", "Stock total"],
 };
 
 export const wmsInventoryCrossMapping = {
