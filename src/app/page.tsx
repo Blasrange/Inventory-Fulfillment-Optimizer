@@ -21,6 +21,7 @@ import {
   Activity,
   Menu,
   X,
+  Tag,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -47,6 +48,7 @@ import { InventoryCrossTable } from "@/components/inventory-cross-table";
 import { InboundMapper } from "@/components/inbound-mapper";
 import { InboundResultsTable } from "@/components/inbound-results-table";
 import { ShelfLifeTable } from "@/components/shelf-life-table";
+import { ExitoLabelsView } from "@/components/exito-labels-view";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   DropdownMenu,
@@ -81,7 +83,7 @@ import {
 
 export default function Home() {
   const [analysisMode, setAnalysisMode] = useState<
-    "sales" | "levels" | "cross" | "inbound" | "shelfLife"
+    "sales" | "levels" | "cross" | "inbound" | "shelfLife" | "exitoLabels"
   >("sales");
   const [salesData, setSalesData] = useState<any[] | null>(null);
   const [inventoryData, setInventoryData] = useState<any[] | null>(null);
@@ -751,6 +753,8 @@ export default function Home() {
         return <Upload className="h-5 w-5" />;
       case "shelfLife":
         return <Clock className="h-5 w-5" />;
+      case "exitoLabels":
+        return <Tag className="h-5 w-5" />;
     }
   };
 
@@ -766,6 +770,8 @@ export default function Home() {
         return "from-amber-500 to-orange-500";
       case "shelfLife":
         return "from-red-500 to-red-600";
+      case "exitoLabels":
+        return "from-green-500 to-emerald-600";
     }
   };
 
@@ -781,6 +787,8 @@ export default function Home() {
         return "bg-amber-500";
       case "shelfLife":
         return "bg-red-500";
+      case "exitoLabels":
+        return "bg-green-500";
     }
   };
 
@@ -856,6 +864,13 @@ export default function Home() {
                   <GitCompare className="h-3.5 w-3.5 mr-2" />
                   Cruce
                 </TabsTrigger>
+                <TabsTrigger
+                  value="exitoLabels"
+                  className="text-xs font-medium rounded-lg px-4 py-2 data-[state=active]:bg-white data-[state=active]:text-green-600 data-[state=active]:shadow-md transition-all duration-200 text-slate-600"
+                >
+                  <Tag className="h-3.5 w-3.5 mr-2" />
+                  Etiquetas Éxito
+                </TabsTrigger>
               </TabsList>
             </Tabs>
 
@@ -888,6 +903,7 @@ export default function Home() {
                   onClick={handleAnalyzeClick}
                   disabled={
                     isLoading ||
+                    analysisMode === "exitoLabels" ||
                     (analysisMode === "inbound" && !rawInbound) ||
                     (analysisMode === "sales" &&
                       (!salesData || !inventoryData)) ||
@@ -1080,6 +1096,9 @@ export default function Home() {
                   <TabsTrigger value="shelfLife" className="text-xs">
                     Vida Útil
                   </TabsTrigger>
+                  <TabsTrigger value="exitoLabels" className="text-xs">
+                    Etiquetas Éxito
+                  </TabsTrigger>
                 </TabsList>
               </Tabs>
 
@@ -1125,7 +1144,9 @@ export default function Home() {
                         ? "Cruce SAP vs WMS"
                         : analysisMode === "inbound"
                           ? "Entradas de Mercancía"
-                          : "Análisis de Vida Útil"}
+                          : analysisMode === "shelfLife"
+                            ? "Análisis de Vida Útil"
+                            : "Etiquetas Éxito"}
                 </h2>
                 <p className="text-xs text-slate-500">
                   {analysisMode === "sales" &&
@@ -1138,6 +1159,8 @@ export default function Home() {
                     "Transforma archivos de proveedores a formato WMS"}
                   {analysisMode === "shelfLife" &&
                     "Evalúa lotes contra días mínimos de vida útil"}
+                  {analysisMode === "exitoLabels" &&
+                    "Genera etiquetas ZPL desde el Excel de pedidos Éxito"}
                 </p>
               </div>
             </div>
@@ -1227,126 +1250,131 @@ export default function Home() {
             )}
           </div>
 
-          {/* Tarjeta de Resultados */}
-          <Card className="min-h-[500px] border border-slate-200 shadow-xl rounded-2xl overflow-hidden bg-white">
-            <div
-              className={cn("h-1.5 w-full bg-gradient-to-r", getModeColor())}
-            ></div>
-            <CardContent className="p-6 md:p-8">
-              {isLoading ? (
-                <div className="flex flex-col items-center justify-center h-[400px] gap-6">
-                  <div className="relative">
-                    <div className="absolute inset-0 bg-gradient-to-r from-blue-400 to-indigo-400 rounded-full blur-xl opacity-30"></div>
-                    <RefreshCcw className="h-16 w-16 animate-spin text-blue-500 relative z-10" />
-                  </div>
-                  <div className="text-center space-y-3">
-                    <p className="text-2xl font-bold bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent">
-                      Procesando datos...
-                    </p>
-                    <p className="text-slate-500">
-                      Analizando patrones y generando perspectivas
-                    </p>
-                    <Progress
-                      value={65}
-                      className={cn("w-64 h-2", getModeColor())}
-                    />
-                  </div>
-                </div>
-              ) : hasResults ? (
-                <div className="space-y-8">
-                  {analysisMode === "shelfLife" && shelfLifeResults && (
-                    <div>
-                      <div className="border border-amber-200 rounded-xl overflow-hidden bg-amber-50/50 shadow-inner">
-                        <ShelfLifeTable data={shelfLifeResults} />
-                      </div>
-                    </div>
-                  )}
+          {/* Vista Etiquetas Éxito - Módulo independiente */}
+          {analysisMode === "exitoLabels" && <ExitoLabelsView />}
 
-                  {missingProducts &&
-                    missingProducts.length > 0 &&
-                    analysisMode !== "shelfLife" && (
+          {/* Tarjeta de Resultados - Oculta en modo Etiquetas Éxito */}
+          {analysisMode !== "exitoLabels" && (
+            <Card className="min-h-[500px] border border-slate-200 shadow-xl rounded-2xl overflow-hidden bg-white">
+              <div
+                className={cn("h-1.5 w-full bg-gradient-to-r", getModeColor())}
+              ></div>
+              <CardContent className="p-6 md:p-8">
+                {isLoading ? (
+                  <div className="flex flex-col items-center justify-center h-[400px] gap-6">
+                    <div className="relative">
+                      <div className="absolute inset-0 bg-gradient-to-r from-blue-400 to-indigo-400 rounded-full blur-xl opacity-30"></div>
+                      <RefreshCcw className="h-16 w-16 animate-spin text-blue-500 relative z-10" />
+                    </div>
+                    <div className="text-center space-y-3">
+                      <p className="text-2xl font-bold bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent">
+                        Procesando datos...
+                      </p>
+                      <p className="text-slate-500">
+                        Analizando patrones y generando perspectivas
+                      </p>
+                      <Progress
+                        value={65}
+                        className={cn("w-64 h-2", getModeColor())}
+                      />
+                    </div>
+                  </div>
+                ) : hasResults ? (
+                  <div className="space-y-8">
+                    {analysisMode === "shelfLife" && shelfLifeResults && (
                       <div>
-                        <div className="border border-rose-200 rounded-xl overflow-hidden bg-rose-50/50 shadow-inner">
-                          <MissingStockTable products={missingProducts} />
+                        <div className="border border-amber-200 rounded-xl overflow-hidden bg-amber-50/50 shadow-inner">
+                          <ShelfLifeTable data={shelfLifeResults} />
                         </div>
                       </div>
                     )}
 
-                  {suggestions &&
-                    suggestions.length > 0 &&
-                    analysisMode !== "shelfLife" && (
+                    {missingProducts &&
+                      missingProducts.length > 0 &&
+                      analysisMode !== "shelfLife" && (
+                        <div>
+                          <div className="border border-rose-200 rounded-xl overflow-hidden bg-rose-50/50 shadow-inner">
+                            <MissingStockTable products={missingProducts} />
+                          </div>
+                        </div>
+                      )}
+
+                    {suggestions &&
+                      suggestions.length > 0 &&
+                      analysisMode !== "shelfLife" && (
+                        <div>
+                          <div className="border border-blue-200 rounded-xl overflow-hidden bg-blue-50/50 shadow-inner">
+                            <ResultsTable
+                              results={suggestions}
+                              analysisMode={analysisMode as any}
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                    {crossResults && analysisMode === "cross" && (
                       <div>
-                        <div className="border border-blue-200 rounded-xl overflow-hidden bg-blue-50/50 shadow-inner">
-                          <ResultsTable
-                            results={suggestions}
-                            analysisMode={analysisMode as any}
-                          />
+                        <div className="border border-slate-200 rounded-xl overflow-hidden bg-slate-50/50 shadow-inner">
+                          <InventoryCrossTable data={crossResults} />
                         </div>
                       </div>
                     )}
 
-                  {crossResults && analysisMode === "cross" && (
-                    <div>
-                      <div className="border border-slate-200 rounded-xl overflow-hidden bg-slate-50/50 shadow-inner">
-                        <InventoryCrossTable data={crossResults} />
+                    {inboundResults && analysisMode === "inbound" && (
+                      <InboundResultsTable data={inboundResults} />
+                    )}
+                  </div>
+                ) : analysisMode === "inbound" && rawInbound ? (
+                  <InboundMapper
+                    headers={rawInbound.headers}
+                    rows={rawInbound.rows}
+                    onMappingChange={(map, fixed) => {
+                      setInboundMapping(map);
+                      setInboundFixedValues(fixed);
+                    }}
+                  />
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-[400px] text-slate-500 gap-8">
+                    <div className="relative">
+                      <Warehouse className="h-32 w-32 text-slate-300" />
+                      <div className="absolute inset-0 bg-gradient-to-r from-slate-100 to-slate-200 rounded-full blur-xl"></div>
+                    </div>
+                    <div className="text-center space-y-3 max-w-md">
+                      <h3 className="text-2xl font-bold bg-gradient-to-r from-slate-700 to-slate-500 bg-clip-text text-transparent">
+                        {analysisMode === "cross" &&
+                          "¡Listo para cruzar sistemas!"}
+                        {analysisMode === "sales" &&
+                          "Analiza tus ventas e inventario"}
+                        {analysisMode === "levels" &&
+                          "Optimiza tus niveles de stock"}
+                        {analysisMode === "inbound" &&
+                          "Mapea tus entradas de mercancía"}
+                        {analysisMode === "shelfLife" &&
+                          "Analiza la vida útil de tu inventario"}
+                      </h3>
+                      <p className="text-slate-500">
+                        {analysisMode === "cross" &&
+                          "Sube los archivos SAP y WMS para identificar discrepancias"}
+                        {analysisMode === "sales" &&
+                          "Carga los datos de facturación e inventario para obtener sugerencias"}
+                        {analysisMode === "levels" &&
+                          "Sube el inventario actual y los parámetros mín/máx"}
+                        {analysisMode === "inbound" &&
+                          "Carga el archivo del proveedor para transformarlo al formato WMS"}
+                        {analysisMode === "shelfLife" &&
+                          "Carga el inventario WMS y la maestra de vida útil para evaluar lotes"}
+                      </p>
+                      <div className="flex items-center justify-center gap-2 mt-4">
+                        <div className="h-2 w-2 rounded-full bg-blue-400 animate-pulse"></div>
+                        <div className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse delay-100"></div>
+                        <div className="h-2 w-2 rounded-full bg-slate-400 animate-pulse delay-200"></div>
                       </div>
                     </div>
-                  )}
-
-                  {inboundResults && analysisMode === "inbound" && (
-                    <InboundResultsTable data={inboundResults} />
-                  )}
-                </div>
-              ) : analysisMode === "inbound" && rawInbound ? (
-                <InboundMapper
-                  headers={rawInbound.headers}
-                  rows={rawInbound.rows}
-                  onMappingChange={(map, fixed) => {
-                    setInboundMapping(map);
-                    setInboundFixedValues(fixed);
-                  }}
-                />
-              ) : (
-                <div className="flex flex-col items-center justify-center h-[400px] text-slate-500 gap-8">
-                  <div className="relative">
-                    <Warehouse className="h-32 w-32 text-slate-300" />
-                    <div className="absolute inset-0 bg-gradient-to-r from-slate-100 to-slate-200 rounded-full blur-xl"></div>
                   </div>
-                  <div className="text-center space-y-3 max-w-md">
-                    <h3 className="text-2xl font-bold bg-gradient-to-r from-slate-700 to-slate-500 bg-clip-text text-transparent">
-                      {analysisMode === "cross" &&
-                        "¡Listo para cruzar sistemas!"}
-                      {analysisMode === "sales" &&
-                        "Analiza tus ventas e inventario"}
-                      {analysisMode === "levels" &&
-                        "Optimiza tus niveles de stock"}
-                      {analysisMode === "inbound" &&
-                        "Mapea tus entradas de mercancía"}
-                      {analysisMode === "shelfLife" &&
-                        "Analiza la vida útil de tu inventario"}
-                    </h3>
-                    <p className="text-slate-500">
-                      {analysisMode === "cross" &&
-                        "Sube los archivos SAP y WMS para identificar discrepancias"}
-                      {analysisMode === "sales" &&
-                        "Carga los datos de facturación e inventario para obtener sugerencias"}
-                      {analysisMode === "levels" &&
-                        "Sube el inventario actual y los parámetros mín/máx"}
-                      {analysisMode === "inbound" &&
-                        "Carga el archivo del proveedor para transformarlo al formato WMS"}
-                      {analysisMode === "shelfLife" &&
-                        "Carga el inventario WMS y la maestra de vida útil para evaluar lotes"}
-                    </p>
-                    <div className="flex items-center justify-center gap-2 mt-4">
-                      <div className="h-2 w-2 rounded-full bg-blue-400 animate-pulse"></div>
-                      <div className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse delay-100"></div>
-                      <div className="h-2 w-2 rounded-full bg-slate-400 animate-pulse delay-200"></div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </main>
       </div>
     </TooltipProvider>

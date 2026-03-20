@@ -238,7 +238,40 @@ export const InboundResultSchema = z.object({
   results: z.array(InboundItemSchema),
 });
 
+// ──────────────────────────────────────────────────────────────────────────
+// ESQUEMAS PARA ETIQUETAS ÉXITO
+// ──────────────────────────────────────────────────────────────────────────
+export const ExitoLabelItemSchema = z.object({
+  nc: z.string(),
+  ct: z.string(),
+  codigoBarra: z.string(),
+  tienda: z.string(),
+  depto: z.string(),
+  ciudad: z.string(),
+  orden: z.string(),
+  direccion: z.string(),
+  numeroCaja: z.number(),
+  totalCajas: z.number(),
+  cedi: z.string(),
+  desc: z.string(),
+});
+
+export const ExitoLabelsResultSchema = z.object({
+  labels: z.array(ExitoLabelItemSchema),
+  warnings: z.array(z.string()),
+});
+
+export const ParseExitoExcelResultSchema = z.object({
+  ordenCompra: z.string(),
+  cedi: z.string(),
+  labels: z.array(ExitoLabelItemSchema),
+  warnings: z.array(z.string()),
+});
+
 export type AnalysisResult = z.infer<typeof AnalysisResultSchema>;
 export type InventoryCrossResult = z.infer<typeof InventoryCrossResultSchema>;
 export type InboundResult = z.infer<typeof InboundResultSchema>;
 export type ShelfLifeResult = z.infer<typeof ShelfLifeResultSchema>;
+export type ExitoLabelsResult = z.infer<typeof ExitoLabelsResultSchema>;
+export type ExitoLabelData = z.infer<typeof ExitoLabelItemSchema>;
+export type ParseExitoExcelResult = z.infer<typeof ParseExitoExcelResultSchema>;
