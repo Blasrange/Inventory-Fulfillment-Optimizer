@@ -64,6 +64,8 @@ import {
   Sparkles,
   Printer,
   RefreshCw,
+  MonitorDown,
+  WifiOff,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { parseExitoExcel } from "@/features/exito-labels/parser";
@@ -101,6 +103,22 @@ function downloadText(content: string, filename: string): void {
   URL.revokeObjectURL(url);
 }
 
+/**
+ * Cuando la app está desplegada en Vercel (u otro host remoto), las rutas
+ * /api/printers y /api/print-label corren en la nube y no tienen acceso a
+ * las impresoras locales. En ese caso el browser llama directamente al
+ * agente local (local-print-agent.mjs) corriendo en la misma PC del usuario.
+ *
+ * En desarrollo local ambas rutas funcionan igual porque Next.js corre en
+ * localhost también.
+ */
+function getPrinterApiBase(): string {
+  if (typeof window === "undefined") return "";
+  const host = window.location.hostname;
+  const isLocal = host === "localhost" || host === "127.0.0.1";
+  return isLocal ? "" : "http://localhost:3021";
+}
+
 export function ExitoLabelsView() {
   const [labels, setLabels] = useState<ExitoLabelData[]>([]);
   const [zpl, setZpl] = useState("");
@@ -125,6 +143,8 @@ export function ExitoLabelsView() {
   const [isPrintingBatch, setIsPrintingBatch] = useState(false);
   const [printingRows, setPrintingRows] = useState<Set<number>>(new Set());
   const [previewLabel, setPreviewLabel] = useState<ExitoLabelData | null>(null);
+  const [agentStatus, setAgentStatus] = useState<"unknown" | "online" | "offline">("unknown");
+  const isRemoteHost = typeof window !== "undefined" && getPrinterApiBase() !== "";
 
   const { toast } = useToast();
 
@@ -147,20 +167,26 @@ export function ExitoLabelsView() {
 
   const fetchPrinters = async () => {
     setIsLoadingPrinters(true);
+    const remote = getPrinterApiBase() !== "";
     try {
-      const res = await fetch("/api/printers");
+      const res = await fetch(`${getPrinterApiBase()}/api/printers`);
       const data = await res.json();
       const names: string[] = (data.printers ?? []).map(
         (p: { name: string }) => p.name,
       );
       setPrinters(names);
       if (names.length > 0 && !selectedPrinter) setSelectedPrinter(names[0]);
+      if (remote) setAgentStatus("online");
     } catch {
-      toast({
-        variant: "destructive",
-        title: "❌ Error",
-        description: "No se pudieron obtener las impresoras.",
-      });
+      if (remote) {
+        setAgentStatus("offline");
+      } else {
+        toast({
+          variant: "destructive",
+          title: "❌ Error al obtener impresoras",
+          description: "No se pudieron obtener las impresoras.",
+        });
+      }
     } finally {
       setIsLoadingPrinters(false);
     }
@@ -178,7 +204,7 @@ export function ExitoLabelsView() {
     if (rowIndex === -1) setIsPrintingBatch(true);
     else setPrintingRows((prev) => new Set(prev).add(rowIndex));
     try {
-      const res = await fetch("/api/print-label", {
+      const res = await fetch(`${getPrinterApiBase()}/api/print-label`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ printerName: selectedPrinter, zpl: zplContent }),
@@ -450,6 +476,62 @@ export function ExitoLabelsView() {
                 ⚠️ {w}
               </p>
             ))}
+          </div>
+        )}
+
+        {/* Banner agente de impresión — solo visible en host remoto cuando el agente no está corriendo */}
+        {isRemoteHost && agentStatus === "offline" && (
+          <div className="rounded-xl border border-orange-200 bg-orange-50 p-4 space-y-3">
+            <div className="flex items-start gap-3">
+              <WifiOff className="h-5 w-5 text-orange-500 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="text-sm font-semibold text-orange-800">
+                  Agente de impresión no detectado en este equipo
+                </p>
+                <p className="text-xs text-orange-700 mt-0.5">
+                  Para imprimir desde esta PC necesitas ejecutar el agente local.
+                  Cada compañero debe hacerlo una vez en su propio equipo.
+                </p>
+              </div>
+            </div>
+            <div className="ml-8 space-y-2.5">
+              <a
+                href="/local-print-agent.mjs"
+                download="local-print-agent.mjs"
+                className="inline-flex items-center gap-1.5 text-xs bg-orange-600 hover:bg-orange-700 text-white px-3 py-1.5 rounded-lg font-medium transition-colors"
+              >
+                <MonitorDown className="h-3.5 w-3.5" />
+                Descargar agente de impresión
+              </a>
+              <ol className="text-xs text-orange-700 space-y-0.5 list-decimal list-inside">
+                <li>Descarga el archivo <strong>local-print-agent.mjs</strong></li>
+                <li>Asegúrate de tener <strong>Node.js</strong> instalado (<a href="https://nodejs.org" target="_blank" rel="noopener noreferrer" className="underline">nodejs.org</a>)</li>
+                <li>Abre una terminal (cmd o PowerShell) en la carpeta donde guardaste el archivo</li>
+                <li>Ejecuta: <code className="bg-orange-100 px-1.5 py-0.5 rounded font-mono">node local-print-agent.mjs</code></li>
+                <li>Mantén esa ventana abierta y presiona "Reintentar"</li>
+              </ol>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={fetchPrinters}
+                disabled={isLoadingPrinters}
+                className="text-xs h-7 border-orange-300 text-orange-700 hover:bg-orange-100"
+              >
+                <RefreshCw className={cn("h-3 w-3 mr-1.5", isLoadingPrinters && "animate-spin")} />
+                Reintentar conexión
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Chip agente activo */}
+        {isRemoteHost && agentStatus === "online" && (
+          <div className="flex items-center gap-1.5 text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-1.5 w-fit">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+            </span>
+            Agente de impresión activo en este equipo
           </div>
         )}
       </div>
