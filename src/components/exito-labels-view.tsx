@@ -509,7 +509,8 @@ export function ExitoLabelsView() {
               </a>
               <ol className="text-xs text-orange-700 space-y-0.5 list-decimal list-inside">
                 <li>
-                  Descarga y ejecuta <strong>install-print-connector.exe</strong>
+                  Descarga y ejecuta{" "}
+                  <strong>install-print-connector.exe</strong>
                 </li>
                 <li>
                   El instalador detecta Node.js y, si falta, intenta instalarlo
@@ -527,7 +528,8 @@ export function ExitoLabelsView() {
                   </a>
                 </li>
                 <li>
-                  Descarga <strong>install-print-connector.ps1</strong> y ejecuta:
+                  Descarga <strong>install-print-connector.ps1</strong> y
+                  ejecuta:
                   <code className="bg-orange-100 px-1.5 py-0.5 rounded font-mono">
                     powershell -ExecutionPolicy Bypass -File
                     .\install-print-connector.ps1

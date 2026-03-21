@@ -127,7 +127,7 @@ Write-Step "Eliminando tarea previa (si existe)"
 schtasks /Delete /TN "$ConnectorName" /F | Out-Null 2>&1
 
 Write-Step "Creando tarea de inicio de sesión"
-$taskRun = "wscript.exe \"$launcherVbs\""
+$taskRun = "wscript.exe `"$launcherVbs`""
 $createArgs = @(
   "/Create",
   "/SC", "ONLOGON",
