@@ -229,7 +229,9 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, "127.0.0.1", () => {
-  console.log(`\n✅ Agente de impresión local corriendo en http://localhost:${PORT}`);
+  console.log(
+    `\n✅ Agente de impresión local corriendo en http://localhost:${PORT}`,
+  );
   console.log(`   GET  http://localhost:${PORT}/api/printers`);
   console.log(`   POST http://localhost:${PORT}/api/print-label\n`);
   console.log("   Mantén esta ventana abierta mientras uses la aplicación.");
@@ -238,7 +240,9 @@ server.listen(PORT, "127.0.0.1", () => {
 
 server.on("error", (e) => {
   if (e.code === "EADDRINUSE") {
-    console.error(`\n❌ El puerto ${PORT} ya está en uso. Cierra el proceso anterior.\n`);
+    console.error(
+      `\n❌ El puerto ${PORT} ya está en uso. Cierra el proceso anterior.\n`,
+    );
   } else {
     console.error("Error en el servidor:", e.message);
   }

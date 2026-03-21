@@ -9,7 +9,10 @@
     "build": "NODE_ENV=production next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "connector:install": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/windows/install-print-connector.ps1",
+    "connector:uninstall": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/windows/uninstall-print-connector.ps1",
+    "connector:status": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/windows/status-print-connector.ps1"
   },
   "dependencies": {
     "@genkit-ai/google-genai": "^1.20.0",

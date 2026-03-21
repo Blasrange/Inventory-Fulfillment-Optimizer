@@ -143,8 +143,11 @@ export function ExitoLabelsView() {
   const [isPrintingBatch, setIsPrintingBatch] = useState(false);
   const [printingRows, setPrintingRows] = useState<Set<number>>(new Set());
   const [previewLabel, setPreviewLabel] = useState<ExitoLabelData | null>(null);
-  const [agentStatus, setAgentStatus] = useState<"unknown" | "online" | "offline">("unknown");
-  const isRemoteHost = typeof window !== "undefined" && getPrinterApiBase() !== "";
+  const [agentStatus, setAgentStatus] = useState<
+    "unknown" | "online" | "offline"
+  >("unknown");
+  const isRemoteHost =
+    typeof window !== "undefined" && getPrinterApiBase() !== "";
 
   const { toast } = useToast();
 
@@ -489,26 +492,46 @@ export function ExitoLabelsView() {
                   Agente de impresión no detectado en este equipo
                 </p>
                 <p className="text-xs text-orange-700 mt-0.5">
-                  Para imprimir desde esta PC necesitas ejecutar el agente local.
-                  Cada compañero debe hacerlo una vez en su propio equipo.
+                  Para imprimir desde esta PC necesitas ejecutar el agente
+                  local. Cada compañero debe hacerlo una vez en su propio
+                  equipo.
                 </p>
               </div>
             </div>
             <div className="ml-8 space-y-2.5">
               <a
-                href="/local-print-agent.mjs"
-                download="local-print-agent.mjs"
+                href="/install-print-connector.ps1"
+                download="install-print-connector.ps1"
                 className="inline-flex items-center gap-1.5 text-xs bg-orange-600 hover:bg-orange-700 text-white px-3 py-1.5 rounded-lg font-medium transition-colors"
               >
                 <MonitorDown className="h-3.5 w-3.5" />
-                Descargar agente de impresión
+                Descargar instalador automático
               </a>
               <ol className="text-xs text-orange-700 space-y-0.5 list-decimal list-inside">
-                <li>Descarga el archivo <strong>local-print-agent.mjs</strong></li>
-                <li>Asegúrate de tener <strong>Node.js</strong> instalado (<a href="https://nodejs.org" target="_blank" rel="noopener noreferrer" className="underline">nodejs.org</a>)</li>
-                <li>Abre una terminal (cmd o PowerShell) en la carpeta donde guardaste el archivo</li>
-                <li>Ejecuta: <code className="bg-orange-100 px-1.5 py-0.5 rounded font-mono">node local-print-agent.mjs</code></li>
-                <li>Mantén esa ventana abierta y presiona "Reintentar"</li>
+                <li>
+                  Descarga <strong>install-print-connector.ps1</strong>
+                </li>
+                <li>
+                  Asegúrate de tener <strong>Node.js</strong> instalado (
+                  <a
+                    href="https://nodejs.org"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline"
+                  >
+                    nodejs.org
+                  </a>
+                  )
+                </li>
+                <li>Click derecho en el archivo y ejecuta con PowerShell</li>
+                <li>
+                  Si Windows bloquea el script, ejecuta este comando una vez:{" "}
+                  <code className="bg-orange-100 px-1.5 py-0.5 rounded font-mono">
+                    powershell -ExecutionPolicy Bypass -File
+                    .\install-print-connector.ps1
+                  </code>
+                </li>
+                <li>Presiona "Reintentar" para detectar el conector activo</li>
               </ol>
               <Button
                 size="sm"
@@ -517,7 +540,12 @@ export function ExitoLabelsView() {
                 disabled={isLoadingPrinters}
                 className="text-xs h-7 border-orange-300 text-orange-700 hover:bg-orange-100"
               >
-                <RefreshCw className={cn("h-3 w-3 mr-1.5", isLoadingPrinters && "animate-spin")} />
+                <RefreshCw
+                  className={cn(
+                    "h-3 w-3 mr-1.5",
+                    isLoadingPrinters && "animate-spin",
+                  )}
+                />
                 Reintentar conexión
               </Button>
             </div>
