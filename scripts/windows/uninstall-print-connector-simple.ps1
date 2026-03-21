@@ -10,10 +10,11 @@ $startupDir = [Environment]::GetFolderPath("Startup")
 Write-Host "[1/4] Deteniendo agente..." -ForegroundColor Cyan
 try {
   Get-Process node -ErrorAction SilentlyContinue | 
-    Where-Object { $_.CommandLine -like "*local-print-agent*" } | 
-    Stop-Process -Force -ErrorAction SilentlyContinue
+  Where-Object { $_.CommandLine -like "*local-print-agent*" } | 
+  Stop-Process -Force -ErrorAction SilentlyContinue
   Start-Sleep -Milliseconds 500
-} catch {
+}
+catch {
   Write-Host "      (no hay procesos que terminar)" -ForegroundColor Gray
 }
 
@@ -32,7 +33,8 @@ try {
       Write-Host "      ✓ Eliminado: $([System.IO.Path]::GetFileName($link))" -ForegroundColor Green
     }
   }
-} catch {
+}
+catch {
   Write-Host "      (error al limpiar startup links)" -ForegroundColor Gray
 }
 
@@ -42,10 +44,12 @@ try {
   if (Test-Path -LiteralPath $installRoot) {
     Remove-Item -LiteralPath $installRoot -Recurse -Force -ErrorAction SilentlyContinue
     Write-Host "      ✓ Carpeta eliminada" -ForegroundColor Green
-  } else {
+  }
+  else {
     Write-Host "      (carpeta no encontrada)" -ForegroundColor Gray
   }
-} catch {
+}
+catch {
   Write-Host "      (error al eliminar carpeta)" -ForegroundColor Gray
 }
 
@@ -62,7 +66,8 @@ try {
   foreach ($item in $regItems) {
     Remove-ItemProperty -Path $runPath -Name $item -ErrorAction SilentlyContinue
   }
-} catch {
+}
+catch {
   Write-Host "      (no había entradas de registro)" -ForegroundColor Gray
 }
 
