@@ -11,7 +11,7 @@ function Write-Step($msg) {
 }
 
 if ([string]::IsNullOrWhiteSpace($InputScript)) {
-  $InputScript = Join-Path $PSScriptRoot "install-print-connector.ps1"
+  $InputScript = Join-Path $PSScriptRoot "install-print-connector-simple.ps1"
 }
 if ([string]::IsNullOrWhiteSpace($AgentScript)) {
   $AgentScript = Join-Path $PSScriptRoot "..\..\local-print-agent.mjs"
