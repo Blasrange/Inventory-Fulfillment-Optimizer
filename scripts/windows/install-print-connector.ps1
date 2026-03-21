@@ -14,6 +14,28 @@ function Write-Step($msg) {
   Write-Host "[IFO] $msg" -ForegroundColor Cyan
 }
 
+function Resolve-SystemCommandPath {
+  Param(
+    [Parameter(Mandatory = $true)]
+    [string]$CommandName
+  )
+
+  try {
+    $cmd = Get-Command $CommandName -ErrorAction Stop
+    if ($cmd -and $cmd.Source -and (Test-Path $cmd.Source)) {
+      return $cmd.Source
+    }
+  } catch {}
+
+  $system32 = Join-Path $env:WINDIR "System32"
+  $candidate = Join-Path $system32 $CommandName
+  if (Test-Path $candidate) {
+    return $candidate
+  }
+
+  return $null
+}
+
 function Get-NodePath {
   try {
     return (Get-Command node -ErrorAction Stop).Source
@@ -36,8 +58,15 @@ function Ensure-NodeInstalled {
   }
 
   Write-Step "Node.js no encontrado. Intentando instalar con winget..."
-  $winget = Get-Command winget -ErrorAction SilentlyContinue
-  if (-not $winget) {
+  $wingetPath = Resolve-SystemCommandPath -CommandName "winget.exe"
+  if (-not $wingetPath) {
+    $wingetAliasPath = Join-Path $env:LOCALAPPDATA "Microsoft\WindowsApps\winget.exe"
+    if (Test-Path $wingetAliasPath) {
+      $wingetPath = $wingetAliasPath
+    }
+  }
+
+  if (-not $wingetPath) {
     Write-Error "No se encontró winget. Instala Node.js manualmente desde https://nodejs.org y vuelve a ejecutar el instalador."
     exit 1
   }
@@ -51,7 +80,7 @@ function Ensure-NodeInstalled {
     "--disable-interactivity"
   )
 
-  $installProc = Start-Process -FilePath "winget.exe" -ArgumentList $installArgs -Wait -NoNewWindow -PassThru
+  $installProc = Start-Process -FilePath $wingetPath -ArgumentList $installArgs -Wait -NoNewWindow -PassThru
   if ($installProc.ExitCode -ne 0) {
     Write-Error "No se pudo instalar Node.js automáticamente (winget exit code $($installProc.ExitCode))."
     exit 1
@@ -132,10 +161,22 @@ shell.Run cmd, 0, False
 Set-Content -Path $launcherVbs -Value $vbs -Encoding ASCII
 
 Write-Step "Eliminando tarea previa (si existe)"
-schtasks /Delete /TN "$ConnectorName" /F | Out-Null 2>&1
+$schtasksPath = Resolve-SystemCommandPath -CommandName "schtasks.exe"
+if (-not $schtasksPath) {
+  Write-Error "No se encontró schtasks.exe en este equipo."
+  exit 1
+}
+
+$wscriptPath = Resolve-SystemCommandPath -CommandName "wscript.exe"
+if (-not $wscriptPath) {
+  Write-Error "No se encontró wscript.exe en este equipo."
+  exit 1
+}
+
+& $schtasksPath /Delete /TN "$ConnectorName" /F | Out-Null 2>&1
 
 Write-Step "Creando tarea de inicio de sesión"
-$taskRun = "wscript.exe `"$launcherVbs`""
+$taskRun = "$wscriptPath `"$launcherVbs`""
 $createArgs = @(
   "/Create",
   "/SC", "ONLOGON",
@@ -144,10 +185,10 @@ $createArgs = @(
   "/RL", "LIMITED",
   "/F"
 )
-$null = Start-Process -FilePath "schtasks.exe" -ArgumentList $createArgs -Wait -NoNewWindow -PassThru
+$null = Start-Process -FilePath $schtasksPath -ArgumentList $createArgs -Wait -NoNewWindow -PassThru
 
 Write-Step "Lanzando conector ahora"
-Start-Process -FilePath "wscript.exe" -ArgumentList "`"$launcherVbs`"" -WindowStyle Hidden
+Start-Process -FilePath $wscriptPath -ArgumentList "`"$launcherVbs`"" -WindowStyle Hidden
 
 Write-Host ""
 Write-Host "Instalación completada." -ForegroundColor Green
