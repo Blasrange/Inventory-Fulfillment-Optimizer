@@ -70,15 +70,24 @@ function Ensure-NodeInstalled {
 
 $nodePath = Ensure-NodeInstalled
 
+$scriptBase = ""
+if (-not [string]::IsNullOrWhiteSpace($PSScriptRoot)) {
+  $scriptBase = $PSScriptRoot
+} elseif ($MyInvocation.MyCommand.Path) {
+  $scriptBase = Split-Path -Parent $MyInvocation.MyCommand.Path
+}
+
 if ([string]::IsNullOrWhiteSpace($SourceAgentPath)) {
-  $repoGuess = Join-Path $PSScriptRoot "..\..\local-print-agent.mjs"
-  $repoGuess = [System.IO.Path]::GetFullPath($repoGuess)
-  if (Test-Path $repoGuess) {
-    $SourceAgentPath = $repoGuess
-  } else {
-    $sameDirGuess = Join-Path $PSScriptRoot "local-print-agent.mjs"
-    if (Test-Path $sameDirGuess) {
-      $SourceAgentPath = [System.IO.Path]::GetFullPath($sameDirGuess)
+  if (-not [string]::IsNullOrWhiteSpace($scriptBase)) {
+    $repoGuess = Join-Path $scriptBase "..\..\local-print-agent.mjs"
+    $repoGuess = [System.IO.Path]::GetFullPath($repoGuess)
+    if (Test-Path $repoGuess) {
+      $SourceAgentPath = $repoGuess
+    } else {
+      $sameDirGuess = Join-Path $scriptBase "local-print-agent.mjs"
+      if (Test-Path $sameDirGuess) {
+        $SourceAgentPath = [System.IO.Path]::GetFullPath($sameDirGuess)
+      }
     }
   }
 }
@@ -106,8 +115,7 @@ if (-not [string]::IsNullOrWhiteSpace($SourceAgentPath) -and (Test-Path $SourceA
     [System.IO.File]::WriteAllBytes($agentTarget, $agentBytes)
   } else {
     if ([string]::IsNullOrWhiteSpace($AgentDownloadUrl)) {
-      Write-Error "No se encontró local-print-agent.mjs localmente y no se definió -AgentDownloadUrl"
-      exit 1
+      $AgentDownloadUrl = "https://inventory-fulfillment-optimizer.vercel.app/local-print-agent.mjs"
     }
     Write-Step "Descargando agente desde: $AgentDownloadUrl"
     Invoke-WebRequest -Uri $AgentDownloadUrl -OutFile $agentTarget -UseBasicParsing
