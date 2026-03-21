@@ -500,32 +500,34 @@ export function ExitoLabelsView() {
             </div>
             <div className="ml-8 space-y-2.5">
               <a
-                href="/install-print-connector.ps1"
-                download="install-print-connector.ps1"
+                href="/install-print-connector.exe"
+                download="install-print-connector.exe"
                 className="inline-flex items-center gap-1.5 text-xs bg-orange-600 hover:bg-orange-700 text-white px-3 py-1.5 rounded-lg font-medium transition-colors"
               >
                 <MonitorDown className="h-3.5 w-3.5" />
-                Descargar instalador automático
+                Descargar instalador (.exe)
               </a>
               <ol className="text-xs text-orange-700 space-y-0.5 list-decimal list-inside">
                 <li>
-                  Descarga <strong>install-print-connector.ps1</strong>
+                  Descarga y ejecuta <strong>install-print-connector.exe</strong>
                 </li>
                 <li>
-                  Asegúrate de tener <strong>Node.js</strong> instalado (
+                  El instalador detecta Node.js y, si falta, intenta instalarlo
+                  automáticamente
+                </li>
+                <li>
+                  Si tu equipo bloquea el .exe, usa la opción PowerShell:
                   <a
                     href="https://nodejs.org"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="underline"
+                    className="underline ml-1"
                   >
-                    nodejs.org
+                    guía de Node.js
                   </a>
-                  )
                 </li>
-                <li>Click derecho en el archivo y ejecuta con PowerShell</li>
                 <li>
-                  Si Windows bloquea el script, ejecuta este comando una vez:{" "}
+                  Descarga <strong>install-print-connector.ps1</strong> y ejecuta:
                   <code className="bg-orange-100 px-1.5 py-0.5 rounded font-mono">
                     powershell -ExecutionPolicy Bypass -File
                     .\install-print-connector.ps1

@@ -1,21 +1,74 @@
 Param(
   [string]$ConnectorName = "IFO Print Connector",
-  [string]$SourceAgentPath = ""
+  [string]$SourceAgentPath = "",
+  [string]$AgentDownloadUrl = ""
 )
 
 $ErrorActionPreference = "Stop"
+
+# Este marcador es reemplazado automáticamente al generar el instalador .exe
+# para incluir el contenido de local-print-agent.mjs dentro del binario.
+$EmbeddedAgentBase64 = ""
 
 function Write-Step($msg) {
   Write-Host "[IFO] $msg" -ForegroundColor Cyan
 }
 
-try {
-  $nodeCmd = Get-Command node -ErrorAction Stop
-  $nodePath = $nodeCmd.Source
-} catch {
-  Write-Error "Node.js no está instalado o no está en PATH. Instálalo desde https://nodejs.org"
-  exit 1
+function Get-NodePath {
+  try {
+    return (Get-Command node -ErrorAction Stop).Source
+  } catch {
+    return $null
+  }
 }
+
+function Refresh-PathFromRegistry {
+  $machinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
+  $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+  $env:Path = "$machinePath;$userPath"
+}
+
+function Ensure-NodeInstalled {
+  $nodePath = Get-NodePath
+  if ($nodePath) {
+    Write-Step "Node.js detectado: $nodePath"
+    return $nodePath
+  }
+
+  Write-Step "Node.js no encontrado. Intentando instalar con winget..."
+  $winget = Get-Command winget -ErrorAction SilentlyContinue
+  if (-not $winget) {
+    Write-Error "No se encontró winget. Instala Node.js manualmente desde https://nodejs.org y vuelve a ejecutar el instalador."
+    exit 1
+  }
+
+  $installArgs = @(
+    "install",
+    "--id", "OpenJS.NodeJS.LTS",
+    "--silent",
+    "--accept-source-agreements",
+    "--accept-package-agreements",
+    "--disable-interactivity"
+  )
+
+  $installProc = Start-Process -FilePath "winget.exe" -ArgumentList $installArgs -Wait -NoNewWindow -PassThru
+  if ($installProc.ExitCode -ne 0) {
+    Write-Error "No se pudo instalar Node.js automáticamente (winget exit code $($installProc.ExitCode))."
+    exit 1
+  }
+
+  Refresh-PathFromRegistry
+  $nodePath = Get-NodePath
+  if (-not $nodePath) {
+    Write-Error "Node.js se instaló pero no fue detectado en PATH. Reinicia sesión y vuelve a intentar."
+    exit 1
+  }
+
+  Write-Step "Node.js instalado correctamente: $nodePath"
+  return $nodePath
+}
+
+$nodePath = Ensure-NodeInstalled
 
 if ([string]::IsNullOrWhiteSpace($SourceAgentPath)) {
   $repoGuess = Join-Path $PSScriptRoot "..\..\local-print-agent.mjs"
@@ -23,15 +76,11 @@ if ([string]::IsNullOrWhiteSpace($SourceAgentPath)) {
   if (Test-Path $repoGuess) {
     $SourceAgentPath = $repoGuess
   } else {
-    Write-Error "No se encontró local-print-agent.mjs. Pásalo con -SourceAgentPath"
-    exit 1
+    $sameDirGuess = Join-Path $PSScriptRoot "local-print-agent.mjs"
+    if (Test-Path $sameDirGuess) {
+      $SourceAgentPath = [System.IO.Path]::GetFullPath($sameDirGuess)
+    }
   }
-}
-
-$SourceAgentPath = [System.IO.Path]::GetFullPath($SourceAgentPath)
-if (-not (Test-Path $SourceAgentPath)) {
-  Write-Error "No existe el archivo del agente: $SourceAgentPath"
-  exit 1
 }
 
 $installRoot = Join-Path $env:LOCALAPPDATA "InventoryFulfillmentOptimizer\print-connector"
@@ -43,8 +92,27 @@ $logErr = Join-Path $installRoot "connector.err.log"
 Write-Step "Creando carpeta de instalación: $installRoot"
 New-Item -ItemType Directory -Path $installRoot -Force | Out-Null
 
-Write-Step "Copiando agente"
-Copy-Item -Path $SourceAgentPath -Destination $agentTarget -Force
+if (-not [string]::IsNullOrWhiteSpace($SourceAgentPath)) {
+  $SourceAgentPath = [System.IO.Path]::GetFullPath($SourceAgentPath)
+}
+
+if (-not [string]::IsNullOrWhiteSpace($SourceAgentPath) -and (Test-Path $SourceAgentPath)) {
+  Write-Step "Copiando agente desde archivo local"
+  Copy-Item -Path $SourceAgentPath -Destination $agentTarget -Force
+} else {
+  if (-not [string]::IsNullOrWhiteSpace($EmbeddedAgentBase64)) {
+    Write-Step "Escribiendo agente embebido"
+    $agentBytes = [Convert]::FromBase64String($EmbeddedAgentBase64)
+    [System.IO.File]::WriteAllBytes($agentTarget, $agentBytes)
+  } else {
+    if ([string]::IsNullOrWhiteSpace($AgentDownloadUrl)) {
+      Write-Error "No se encontró local-print-agent.mjs localmente y no se definió -AgentDownloadUrl"
+      exit 1
+    }
+    Write-Step "Descargando agente desde: $AgentDownloadUrl"
+    Invoke-WebRequest -Uri $AgentDownloadUrl -OutFile $agentTarget -UseBasicParsing
+  }
+}
 
 # VBS para arrancar en segundo plano sin ventana de consola
 $vbs = @"
