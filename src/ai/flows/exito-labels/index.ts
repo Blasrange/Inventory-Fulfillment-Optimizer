@@ -13,6 +13,7 @@ import { ai } from "@/ai/genkit";
 import { z } from "zod";
 import { ExitoLabelsResultSchema } from "../schemas";
 import storesData from "@/features/exito-labels/store.json";
+import { exitoLabelsColumnMapping } from "@/app/config";
 
 const ExitoLabelsInputSchema = z.object({
   rows: z
@@ -40,6 +41,40 @@ const storeByCode = new Map<string, StoreRecord>(
   stores.map((store) => [normalizeStoreCode(store.Codigo), store]),
 );
 
+const normalizeHeader = (value: unknown): string =>
+  String(value ?? "")
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Z0-9]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const normalizeCandidates = (values: string[]): string[] =>
+  values.map((value) => normalizeHeader(value));
+
+const includesAny = (value: string, candidates: string[]): boolean =>
+  candidates.some((candidate) => value === candidate);
+
+const findColumnIndex = (values: unknown[], candidates: string[]): number => {
+  for (let i = 0; i < values.length; i += 1) {
+    if (includesAny(normalizeHeader(values[i]), candidates)) {
+      return i;
+    }
+  }
+  return -1;
+};
+
+const ocCandidates = normalizeCandidates(exitoLabelsColumnMapping.ocMarker);
+const barcodeCandidates = normalizeCandidates(exitoLabelsColumnMapping.barcode);
+const dependenciaCandidates = normalizeCandidates(
+  exitoLabelsColumnMapping.dependencia,
+);
+const tiendaCandidates = normalizeCandidates(exitoLabelsColumnMapping.tienda);
+const cantidadCandidates = normalizeCandidates(
+  exitoLabelsColumnMapping.cantidad,
+);
+
 export async function runExitoLabelsProcess(
   input: z.infer<typeof ExitoLabelsInputSchema>,
 ): Promise<z.infer<typeof ExitoLabelsResultSchema>> {
@@ -62,12 +97,13 @@ const exitoLabelsFlow = ai.defineFlow(
     let cedi = "";
 
     for (const row of rows) {
-      const values = Object.values(row).map((v) => norm(v).toUpperCase());
-      const ocIndex = values.findIndex((v) => v === "OC");
+      const values = Object.values(row);
+      const ocIndex = values.findIndex((v) =>
+        includesAny(normalizeHeader(v), ocCandidates),
+      );
       if (ocIndex >= 0) {
-        const vals = Object.values(row);
-        ordenCompra = norm(vals[ocIndex + 1]);
-        cedi = norm(vals[ocIndex + 2]);
+        ordenCompra = norm(values[ocIndex + 1]);
+        cedi = norm(values[ocIndex + 2]);
         break;
       }
     }
@@ -77,19 +113,23 @@ const exitoLabelsFlow = ai.defineFlow(
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
-      const values = Object.values(row).map((v) => norm(v).toUpperCase());
+      const values = Object.values(row);
       if (
-        values.some((v) => v.includes("BARRA") || v.includes("COD")) &&
-        values.some((v) => v.includes("DEPEND"))
+        values.some((v) =>
+          includesAny(normalizeHeader(v), barcodeCandidates),
+        ) &&
+        values.some((v) =>
+          includesAny(normalizeHeader(v), dependenciaCandidates),
+        )
       ) {
         // Construir mapa columna-nombre → índice
         headerRow = {};
         (Object.values(row) as any[]).forEach((val, idx) => {
-          const normalized = norm(val).toUpperCase();
+          const normalized = normalizeHeader(val);
           // Guardamos el nombre original de la columna del objeto como clave
           const key = Object.keys(row)[idx];
           headerRow![normalized] = idx;
-          headerRow![key] = idx;
+          headerRow![normalizeHeader(key)] = idx;
         });
         rows.splice(0, i + 1); // Descartar todo hasta la cabecera inclusive
         break;
@@ -106,27 +146,18 @@ const exitoLabelsFlow = ai.defineFlow(
     // ── 3. Buscar índices de columnas clave ──────────────────────────────────
     const findIndex = (candidates: string[]): number => {
       for (const c of candidates) {
-        if (headerRow![c.toUpperCase()] !== undefined) {
-          return headerRow![c.toUpperCase()];
+        const normalizedCandidate = normalizeHeader(c);
+        if (headerRow![normalizedCandidate] !== undefined) {
+          return headerRow![normalizedCandidate];
         }
       }
       return -1;
     };
 
-    const barcodeIdx = findIndex([
-      "COD. BARRA",
-      "COD.BARRA",
-      "CODBARRA",
-      "BARCODE",
-    ]);
-    const dependenciaIdx = findIndex(["DEPENDENCIAS", "DEPENDENCIA", "DEP"]);
-    const tiendaIdx = findIndex([
-      "DESC. ITEM",
-      "DESCITEM",
-      "DESCRIPCION",
-      "TIENDA",
-    ]);
-    const cantidadIdx = findIndex(["CJ/UN", "CANTIDAD", "CANT", "QTY"]);
+    const barcodeIdx = findIndex(exitoLabelsColumnMapping.barcode);
+    const dependenciaIdx = findIndex(exitoLabelsColumnMapping.dependencia);
+    const tiendaIdx = findIndex(exitoLabelsColumnMapping.tienda);
+    const cantidadIdx = findIndex(exitoLabelsColumnMapping.cantidad);
 
     if ([barcodeIdx, dependenciaIdx, cantidadIdx].includes(-1)) {
       return {

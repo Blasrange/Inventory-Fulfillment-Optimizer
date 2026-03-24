@@ -1,13 +1,7 @@
 import * as XLSX from "xlsx";
 import type { ExitoLabelData, ParseExitoExcelResult } from "@/ai/flows/schemas";
 import storesData from "./store.json";
-
-const HEADER_KEYS = {
-  barcode: "COD. BARRA",
-  dependencia: "DEPENDENCIAS",
-  tienda: "DESC. ITEM",
-  cantidad: "CJ/UN",
-};
+import { exitoLabelsColumnMapping } from "@/app/config";
 
 type StoreRecord = {
   Codigo: string;
@@ -22,7 +16,12 @@ function asText(value: unknown): string {
 }
 
 function asNumber(value: unknown): number {
-  const num = Number(asText(value).replace(/,/g, "."));
+  const raw = asText(value);
+  const normalized = raw
+    .replace(/\s/g, "")
+    .replace(/\.(?=\d{3}(\D|$))/g, "")
+    .replace(/,/g, ".");
+  const num = Number(normalized);
   if (Number.isNaN(num)) return 0;
   return num;
 }
@@ -32,8 +31,35 @@ function normalizeHeader(value: string): string {
     .toUpperCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Z0-9]/g, " ")
+    .replace(/\s+/g, " ")
     .trim();
 }
+
+const normalizeCandidates = (values: string[]): string[] =>
+  values.map(normalizeHeader);
+
+const includesAny = (value: string, candidates: string[]): boolean =>
+  candidates.some((candidate) => value === candidate);
+
+const findColumnIndex = (headerRow: string[], candidates: string[]): number => {
+  for (let i = 0; i < headerRow.length; i += 1) {
+    if (includesAny(headerRow[i], candidates)) {
+      return i;
+    }
+  }
+  return -1;
+};
+
+const barcodeCandidates = normalizeCandidates(exitoLabelsColumnMapping.barcode);
+const dependenciaCandidates = normalizeCandidates(
+  exitoLabelsColumnMapping.dependencia,
+);
+const tiendaCandidates = normalizeCandidates(exitoLabelsColumnMapping.tienda);
+const cantidadCandidates = normalizeCandidates(
+  exitoLabelsColumnMapping.cantidad,
+);
+const ocCandidates = normalizeCandidates(exitoLabelsColumnMapping.ocMarker);
 
 function normalizeStoreCode(value: unknown): string {
   const raw = asText(value);
@@ -76,12 +102,14 @@ export function parseExitoExcel(
   const warnings: string[] = [];
 
   const ocRowIndex = rows.findIndex((row) =>
-    row.some((cell) => normalizeHeader(asText(cell)) === "OC"),
+    row.some((cell) =>
+      includesAny(normalizeHeader(asText(cell)), ocCandidates),
+    ),
   );
   if (ocRowIndex >= 0) {
     const ocRow = rows[ocRowIndex];
-    const ocCellIndex = ocRow.findIndex(
-      (cell) => normalizeHeader(asText(cell)) === "OC",
+    const ocCellIndex = ocRow.findIndex((cell) =>
+      includesAny(normalizeHeader(asText(cell)), ocCandidates),
     );
     if (ocCellIndex >= 0) {
       ordenCompra = asText(ocRow[ocCellIndex + 1]);
@@ -91,8 +119,14 @@ export function parseExitoExcel(
     warnings.push("No se encontro la fila de OC. Se usaran valores vacios.");
   }
 
-  const tableHeaderIndex = rows.findIndex((row) =>
-    row.some((cell) => normalizeHeader(asText(cell)) === HEADER_KEYS.barcode),
+  const tableHeaderIndex = rows.findIndex(
+    (row) =>
+      row.some((cell) =>
+        includesAny(normalizeHeader(asText(cell)), barcodeCandidates),
+      ) &&
+      row.some((cell) =>
+        includesAny(normalizeHeader(asText(cell)), dependenciaCandidates),
+      ),
   );
 
   if (tableHeaderIndex < 0) {
@@ -104,10 +138,10 @@ export function parseExitoExcel(
   const headerRow = rows[tableHeaderIndex].map((h) =>
     normalizeHeader(asText(h)),
   );
-  const barcodeIndex = headerRow.indexOf(HEADER_KEYS.barcode);
-  const dependenciaIndex = headerRow.indexOf(HEADER_KEYS.dependencia);
-  const tiendaIndex = headerRow.indexOf(HEADER_KEYS.tienda);
-  const cantidadIndex = headerRow.indexOf(HEADER_KEYS.cantidad);
+  const barcodeIndex = findColumnIndex(headerRow, barcodeCandidates);
+  const dependenciaIndex = findColumnIndex(headerRow, dependenciaCandidates);
+  const tiendaIndex = findColumnIndex(headerRow, tiendaCandidates);
+  const cantidadIndex = findColumnIndex(headerRow, cantidadCandidates);
 
   if (
     barcodeIndex < 0 ||

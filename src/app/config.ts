@@ -8,12 +8,14 @@
  * El sistema buscará estos nombres en orden y usará el primero que encuentre.
  */
 
+// Modulo: Analisis por Ventas
 export const salesColumnMapping = {
   material: ["Material", "ID de Producto", "codigo", "Material"],
   descripcion: ["Descripción", "Nombre de Artículo"],
   cantidadConfirmada: ["cantidad confirmada", "Cant. Facturada", "Cantidad"],
 };
 
+// Modulo: Inventario base (WMS) para Ventas, Niveles y Vida Util
 export const inventoryColumnMapping = {
   sku: ["SKU", "Item Code"],
   lpn: ["LPN", "Pallet ID"],
@@ -26,6 +28,7 @@ export const inventoryColumnMapping = {
   lote: ["Lote", "Batch", "Ce. Lote"],
 };
 
+// Modulo: Analisis por Niveles (Min/Max)
 export const minMaxColumnMapping = {
   sku: ["sku", "item"],
   lpn: ["lpn", "pallet"],
@@ -34,6 +37,7 @@ export const minMaxColumnMapping = {
   cantidadMaxima: ["cantidad maxima", "max"],
 };
 
+// Modulo: Analisis de Vida Util
 export const shelfLifeColumnMapping = {
   sku: [
     "Código de articulo",
@@ -54,6 +58,7 @@ export const shelfLifeColumnMapping = {
   ],
 };
 
+// Modulo: Cruce de Inventario (fuente SAP)
 export const sapInventoryMapping = {
   sku: ["Material", "Material"],
   descripcion: ["Texto breve material"],
@@ -61,9 +66,64 @@ export const sapInventoryMapping = {
   cantidad: ["Stock disponible", "WM stock disp.", "Stock total"],
 };
 
+// Modulo: Cruce de Inventario (fuente WMS)
 export const wmsInventoryCrossMapping = {
   sku: ["SKU", "Codigo"],
   descripcion: ["Descripcion", "Descripción"],
   lote: ["Lote", "Batch", "Ce. Lote"],
   cantidad: ["Disponible", "Unidades"],
+};
+
+// Modulo: Cruce de Lotes (fuente SAP - entrada)
+export const sapLotCrossMapping = {
+  sku: ["Material", "SKU", "Codigo", "Código"],
+  descripcion: ["Texto breve de material", "Descripcion", "Descripción"],
+  lote: ["Lote", "Ce. Lote"],
+  cantidad: [
+    "Ctd teórica 'desde'",
+    "Ctd Teórica",
+    "Cantidad Teórica",
+    "Stock disponible",
+  ],
+};
+
+// Modulo: Cruce de Lotes (fuente WMS - albaran)
+export const wmsLotCrossMapping = {
+  sku: ["Sku", "SKU", "Sku 2", "Sku2", "Codigo", "Código"],
+  descripcion: ["Descripción", "Descripcion", "Desc"],
+  lote: ["Lote", "Batch", "Ce. Lote"],
+  cantidad: ["Unidades", "Cajas", "Cantidad"],
+};
+
+// Modulo: Etiquetas Exito (homologacion de columnas)
+export const exitoLabelsColumnMapping = {
+  ocMarker: ["OC", "O/C", "ORDEN DE COMPRA", "ORDEN COMPRA", "NRO OC"],
+  barcode: [
+    "COD. BARRA",
+    "COD BARRA",
+    "CODIGO BARRA",
+    "CÓDIGO BARRA",
+    "CODBARRA",
+    "BARCODE",
+    "EAN",
+    "GTIN",
+  ],
+  dependencia: [
+    "DEPENDENCIAS",
+    "DEPENDENCIA",
+    "COD DEPENDENCIA",
+    "CODIGO DEPENDENCIA",
+    "DEP",
+    "TIENDA CODIGO",
+  ],
+  tienda: [
+    "DESC. ITEM",
+    "DESC ITEM",
+    "DESCRIPCION",
+    "DESCRIPCIÓN",
+    "TIENDA",
+    "NOMBRE TIENDA",
+    "DESTINO",
+  ],
+  cantidad: ["CJ/UN", "CANT", "QTY", "UNIDADES", "CAJAS"],
 };

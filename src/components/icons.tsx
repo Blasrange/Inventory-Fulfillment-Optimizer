@@ -4,19 +4,30 @@ export function Logo(props: SVGProps<SVGSVGElement>) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
+      viewBox="0 0 48 48"
       fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
       {...props}
     >
-      <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />
-      <path d="m3.3 7 8.7 5 8.7-5" />
-      <path d="M12 22V12" />
-      <path d="m16 4-5 2.8-5-2.8" />
-      <path d="m4 12 5 2.8 5-2.8" />
+      <rect width="48" height="48" rx="12" fill="url(#logoGrad)" />
+      <rect x="8" y="10" width="32" height="3" rx="1.5" fill="white" fillOpacity="0.95" />
+      <rect x="8" y="22" width="32" height="3" rx="1.5" fill="white" fillOpacity="0.95" />
+      <rect x="8" y="34" width="32" height="3" rx="1.5" fill="white" fillOpacity="0.95" />
+      <rect x="8" y="10" width="3" height="27" rx="1.5" fill="white" fillOpacity="0.7" />
+      <rect x="37" y="10" width="3" height="27" rx="1.5" fill="white" fillOpacity="0.7" />
+      <rect x="13" y="13.5" width="7" height="7" rx="2" fill="white" fillOpacity="0.9" />
+      <rect x="22" y="13.5" width="5" height="7" rx="2" fill="white" fillOpacity="0.6" />
+      <rect x="29" y="13.5" width="7" height="7" rx="2" fill="white" fillOpacity="0.9" />
+      <rect x="13" y="25.5" width="5" height="7" rx="2" fill="white" fillOpacity="0.9" />
+      <rect x="20" y="25.5" width="9" height="7" rx="2" fill="white" fillOpacity="0.6" />
+      <rect x="31" y="25.5" width="5" height="7" rx="2" fill="white" fillOpacity="0.9" />
+      <path d="M30 8 L34 4 L38 8" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+      <line x1="34" y1="4" x2="34" y2="11" stroke="white" strokeWidth="2.5" strokeLinecap="round" />
+      <defs>
+        <linearGradient id="logoGrad" x1="0" y1="0" x2="48" y2="48" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#3B82F6" />
+          <stop offset="100%" stopColor="#6366F1" />
+        </linearGradient>
+      </defs>
     </svg>
   );
 }

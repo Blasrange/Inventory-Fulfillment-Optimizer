@@ -191,6 +191,22 @@ export const InventoryCrossResultSchema = z.object({
   results: z.array(InventoryCrossItemSchema),
 });
 
+export const LotCrossItemSchema = z.object({
+  sku: z.string(),
+  descripcion: z.string().optional(),
+  lotesSap: z.array(z.string()),
+  lotesWms: z.array(z.string()),
+  lotesSoloSap: z.array(z.string()),
+  lotesSoloWms: z.array(z.string()),
+  cantidadSap: z.number(),
+  cantidadWms: z.number(),
+  estado: z.enum(["OK", "DIFERENTE"]),
+});
+
+export const LotCrossResultSchema = z.object({
+  results: z.array(LotCrossItemSchema),
+});
+
 export const ShelfLifeResultItemSchema = z.object({
   sku: z.string(),
   descripcion: z.string(),
@@ -270,6 +286,7 @@ export const ParseExitoExcelResultSchema = z.object({
 
 export type AnalysisResult = z.infer<typeof AnalysisResultSchema>;
 export type InventoryCrossResult = z.infer<typeof InventoryCrossResultSchema>;
+export type LotCrossResult = z.infer<typeof LotCrossResultSchema>;
 export type InboundResult = z.infer<typeof InboundResultSchema>;
 export type ShelfLifeResult = z.infer<typeof ShelfLifeResultSchema>;
 export type ExitoLabelsResult = z.infer<typeof ExitoLabelsResultSchema>;

@@ -6,6 +6,7 @@ import {
 } from "@/ai/flows/sales-analysis";
 import { generateLevelsAnalysis } from "@/ai/flows/levels-analysis";
 import { runInventoryCross } from "@/ai/flows/inventory-cross";
+import { runLotCross } from "@/ai/flows/lot-cross";
 import { runInboundProcess } from "@/ai/flows/inbound";
 import { runShelfLifeAnalysis } from "@/ai/flows/shelf-life";
 import * as XLSX from "xlsx";
@@ -13,6 +14,7 @@ import type {
   GenerateRestockSuggestionsOutput,
   MissingProductsOutput,
   InventoryCrossResult,
+  LotCrossResult,
   InboundResult,
   ShelfLifeResult,
 } from "@/ai/flows/schemas";
@@ -114,7 +116,13 @@ function agregarFilaTotales<T extends Record<string, any>>(
 // ANÁLISIS DE INVENTARIO
 // ============================================================================
 export async function runAnalysis(
-  analysisMode: "sales" | "levels" | "cross" | "inbound" | "shelfLife",
+  analysisMode:
+    | "sales"
+    | "levels"
+    | "cross"
+    | "lotCross"
+    | "inbound"
+    | "shelfLife",
   inventoryData: any[] | null,
   salesData: any[] | null,
   minMaxData: any[] | null,
@@ -131,6 +139,7 @@ export async function runAnalysis(
   data?:
     | AnalysisResult
     | InventoryCrossResult
+    | LotCrossResult
     | InboundResult
     | ShelfLifeResult;
   error?: string;
@@ -160,6 +169,20 @@ export async function runAnalysis(
           sapData,
           wmsData,
           groupByLot: !!groupByLot,
+        }),
+      };
+    }
+
+    if (analysisMode === "lotCross") {
+      if (!sapData || !wmsData)
+        return {
+          error:
+            "❌ Faltan el archivo de entrada SAP o el albarán WMS para el cruce de lotes.",
+        };
+      return {
+        data: await runLotCross({
+          sapData,
+          wmsData,
         }),
       };
     }
@@ -474,8 +497,9 @@ export async function generateWmsFiles(
 export async function generateFullReportFile(
   suggestions: GenerateRestockSuggestionsOutput | null,
   missingProducts: MissingProductsOutput[] | null,
-  analysisMode: "sales" | "levels" | "cross" | "shelfLife",
+  analysisMode: "sales" | "levels" | "cross" | "lotCross" | "shelfLife",
   crossResults?: any[] | null,
+  lotCrossResults?: any[] | null,
   shelfLifeResults?: any[] | null,
 ): Promise<{ data?: { file: string; filename: string }; error?: string }> {
   try {
@@ -776,6 +800,149 @@ export async function generateFullReportFile(
         });
         XLSX.utils.book_append_sheet(wb, wsLotesMixtos, "⚠️ Lotes Mixtos");
       }
+    }
+
+    // REPORTE CRUCE DE LOTES
+    else if (analysisMode === "lotCross" && lotCrossResults?.length) {
+      const sheetData = lotCrossResults.map((item: any) => ({
+        SKU: item.sku,
+        Descripción: item.descripcion || "",
+        "Lotes SAP": Array.isArray(item.lotesSap)
+          ? item.lotesSap.join(", ")
+          : "",
+        "Lotes WMS": Array.isArray(item.lotesWms)
+          ? item.lotesWms.join(", ")
+          : "",
+        "Solo en SAP": Array.isArray(item.lotesSoloSap)
+          ? item.lotesSoloSap.join(", ")
+          : "",
+        "Solo en WMS": Array.isArray(item.lotesSoloWms)
+          ? item.lotesSoloWms.join(", ")
+          : "",
+        "Cant. SAP": item.cantidadSap || 0,
+        "Cant. WMS": item.cantidadWms || 0,
+        Estado: item.estado === "OK" ? "✅ OK" : "❌ DIFERENTE",
+      }));
+
+      const ws = XLSX.utils.json_to_sheet(sheetData);
+      aplicarEstilosModernos(ws, {
+        columnaEstado: Object.keys(sheetData[0]).indexOf("Estado"),
+      });
+      XLSX.utils.book_append_sheet(wb, ws, "📊 Cruce Lotes SAP vs WMS");
+
+      // ========================================================================
+      // HOJA DE RESUMEN - CRUCE DE LOTES
+      // ========================================================================
+      const totalSku = lotCrossResults.length;
+      const totalOK = lotCrossResults.filter(
+        (item: any) => item.estado === "OK",
+      ).length;
+      const totalDiferente = lotCrossResults.filter(
+        (item: any) => item.estado === "DIFERENTE",
+      ).length;
+
+      const totalCantidadSap = lotCrossResults.reduce(
+        (sum, item: any) => sum + (item.cantidadSap || 0),
+        0,
+      );
+      const totalCantidadWms = lotCrossResults.reduce(
+        (sum, item: any) => sum + (item.cantidadWms || 0),
+        0,
+      );
+      const totalDiferenciaCantidad = Math.abs(
+        totalCantidadSap - totalCantidadWms,
+      );
+
+      // Contar lotes únicos
+      const lotesSet = new Set<string>();
+      const lotesSapSet = new Set<string>();
+      const lotesWmsSet = new Set<string>();
+
+      lotCrossResults.forEach((item: any) => {
+        if (Array.isArray(item.lotesSap)) {
+          item.lotesSap.forEach((l: string) => {
+            lotesSet.add(l);
+            lotesSapSet.add(l);
+          });
+        }
+        if (Array.isArray(item.lotesWms)) {
+          item.lotesWms.forEach((l: string) => {
+            lotesSet.add(l);
+            lotesWmsSet.add(l);
+          });
+        }
+      });
+
+      const lotesSoloSap = Array.from(lotesSapSet).filter(
+        (l) => !lotesWmsSet.has(l),
+      ).length;
+      const lotesSoloWms = Array.from(lotesWmsSet).filter(
+        (l) => !lotesSapSet.has(l),
+      ).length;
+
+      const resumenLotesData = [
+        // ========== SECCIÓN 1: SKUs CONCILIADOS ==========
+        { Concepto: "📦 SKUs ANALIZADOS", Valor: "", Unidad: "" },
+        {
+          Concepto: "  • SKUs ✅ OK (lotes conciliados)",
+          Valor: totalOK,
+          Unidad: "SKUs",
+        },
+        {
+          Concepto: "  • SKUs ❌ DIFERENTE (lotes discrepancia)",
+          Valor: totalDiferente,
+          Unidad: "SKUs",
+        },
+        { Concepto: "  • TOTAL SKUs", Valor: totalSku, Unidad: "SKUs" },
+        { Concepto: "", Valor: "", Unidad: "" },
+
+        // ========== SECCIÓN 2: CANTIDADES ==========
+        { Concepto: "🏭 CANTIDADES", Valor: "", Unidad: "" },
+        {
+          Concepto: "  • Cantidad Total SAP",
+          Valor: totalCantidadSap,
+          Unidad: "Unidades",
+        },
+        {
+          Concepto: "  • Cantidad Total WMS",
+          Valor: totalCantidadWms,
+          Unidad: "Unidades",
+        },
+        {
+          Concepto: "  • Diferencia de Cantidades",
+          Valor: totalDiferenciaCantidad,
+          Unidad: "Unidades",
+        },
+        { Concepto: "", Valor: "", Unidad: "" },
+
+        // ========== SECCIÓN 3: ANÁLISIS DE LOTES ==========
+        { Concepto: "📋 ANÁLISIS DE LOTES", Valor: "", Unidad: "" },
+        {
+          Concepto: "  • Total Lotes Únicos",
+          Valor: lotesSet.size,
+          Unidad: "Lotes",
+        },
+        {
+          Concepto: "  • Lotes SOLO en SAP",
+          Valor: lotesSoloSap,
+          Unidad: "Lotes",
+        },
+        {
+          Concepto: "  • Lotes SOLO en WMS",
+          Valor: lotesSoloWms,
+          Unidad: "Lotes",
+        },
+        {
+          Concepto: "  • Lotes Conciliados (en ambos)",
+          Valor: lotesSet.size - lotesSoloSap - lotesSoloWms,
+          Unidad: "Lotes",
+        },
+      ];
+
+      const wsResumenLotes = XLSX.utils.json_to_sheet(resumenLotesData);
+      wsResumenLotes["!cols"] = [{ wch: 45 }, { wch: 20 }, { wch: 15 }];
+      aplicarEstilosModernos(wsResumenLotes);
+      XLSX.utils.book_append_sheet(wb, wsResumenLotes, "📈 Resumen de Lotes");
     }
 
     // REPORTE SUGERENCIAS

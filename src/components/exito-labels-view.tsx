@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { FileUploader } from "@/components/file-uploader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -119,10 +119,24 @@ function getPrinterApiBase(): string {
   return isLocal ? "" : "http://localhost:3021";
 }
 
-export function ExitoLabelsView() {
+interface ExitoLabelsViewProps {
+  analyzeTrigger?: number;
+  onCanAnalyzeChange?: (canAnalyze: boolean) => void;
+  onAnalyzeFinished?: () => void;
+}
+
+export function ExitoLabelsView({
+  analyzeTrigger,
+  onCanAnalyzeChange,
+  onAnalyzeFinished,
+}: ExitoLabelsViewProps) {
   const [labels, setLabels] = useState<ExitoLabelData[]>([]);
   const [zpl, setZpl] = useState("");
   const [warnings, setWarnings] = useState<string[]>([]);
+  const [pendingFileContent, setPendingFileContent] = useState<
+    string | ArrayBuffer | null
+  >(null);
+  const lastAnalyzeTrigger = useRef<number | undefined>(analyzeTrigger);
 
   // Tabla state
   const [searchTerm, setSearchTerm] = useState("");
@@ -251,7 +265,7 @@ export function ExitoLabelsView() {
     };
   }, []);
 
-  const handleFileRead = (content: string | ArrayBuffer) => {
+  const processLoadedFile = (content: string | ArrayBuffer) => {
     try {
       const parsed = parseExitoExcel(content);
       const generatedZpl = generateExitoBatchZpl(parsed.labels);
@@ -264,6 +278,7 @@ export function ExitoLabelsView() {
         className:
           "bg-gradient-to-r from-green-300 to-green-400 text-white border-0 shadow-lg",
       });
+      onAnalyzeFinished?.();
     } catch (error) {
       toast({
         variant: "destructive",
@@ -271,7 +286,26 @@ export function ExitoLabelsView() {
         description:
           error instanceof Error ? error.message : "Error desconocido",
       });
+      onAnalyzeFinished?.();
     }
+  };
+
+  const handleFileRead = (content: string | ArrayBuffer) => {
+    setPendingFileContent(content);
+    onCanAnalyzeChange?.(true);
+
+    if (analyzeTrigger === undefined) {
+      processLoadedFile(content);
+      return;
+    }
+
+    toast({
+      title: "✅ Archivo cargado",
+      description:
+        "Archivo listo. Presiona Actualizar para procesar las etiquetas.",
+      className:
+        "bg-gradient-to-r from-green-300 to-green-400 text-white border-0 shadow-lg",
+    });
   };
 
   const handleReset = () => {
@@ -282,7 +316,29 @@ export function ExitoLabelsView() {
     setSortConfig(null);
     setHiddenColumns(new Set());
     setExpandedRows(new Set());
+    setPendingFileContent(null);
+    onCanAnalyzeChange?.(false);
   };
+
+  useEffect(() => {
+    if (analyzeTrigger === undefined) {
+      return;
+    }
+
+    const triggerChanged = analyzeTrigger !== lastAnalyzeTrigger.current;
+    lastAnalyzeTrigger.current = analyzeTrigger;
+
+    if (!triggerChanged) {
+      return;
+    }
+
+    if (!pendingFileContent) {
+      onAnalyzeFinished?.();
+      return;
+    }
+
+    processLoadedFile(pendingFileContent);
+  }, [analyzeTrigger, pendingFileContent]);
 
   const filteredData = useMemo(() => {
     if (!searchTerm) return labels;
@@ -404,7 +460,7 @@ export function ExitoLabelsView() {
                 onClick={() => copyRowToClipboard(row, index)}
               >
                 {copiedRow === index ? (
-                  <Check className="h-3 w-3 text-green-500" />
+                  <Check className="h-3 w-3 text-[#7A1F3D]" />
                 ) : (
                   <Copy className="h-3 w-3" />
                 )}
@@ -558,10 +614,10 @@ export function ExitoLabelsView() {
 
         {/* Chip agente activo */}
         {isRemoteHost && agentStatus === "online" && (
-          <div className="flex items-center gap-1.5 text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-1.5 w-fit">
+          <div className="flex items-center gap-1.5 text-xs text-[#7A1F3D] bg-[#F8F1F4] border border-[#E7D2DA] rounded-lg px-3 py-1.5 w-fit">
             <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#B55C7C] opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-[#7A1F3D]" />
             </span>
             Agente de impresión activo en este equipo
           </div>
@@ -570,16 +626,19 @@ export function ExitoLabelsView() {
 
       {/* Estado vacío */}
       {labels.length === 0 && (
-        <div className="flex flex-col items-center justify-center h-[340px] text-slate-500 gap-6 bg-white rounded-2xl border border-slate-200 shadow-sm">
-          <Warehouse className="h-24 w-24 text-slate-200" />
-          <div className="text-center space-y-2 max-w-sm">
-            <h3 className="text-xl font-bold text-slate-600">
-              Genera etiquetas Éxito
-            </h3>
-            <p className="text-sm text-slate-400">
-              Carga el Excel de pedidos para generar las etiquetas en formato
-              ZPL listas para imprimir.
-            </p>
+        <div className="rounded-2xl border border-slate-200 shadow-sm bg-white overflow-hidden">
+          <div className="h-1.5 w-full bg-gradient-to-r from-[#7A1F3D] via-[#8F2548] to-[#A7345A]"></div>
+          <div className="flex flex-col items-center justify-center h-[340px] text-slate-500 gap-6">
+            <Warehouse className="h-24 w-24 text-slate-200" />
+            <div className="text-center space-y-2 max-w-sm">
+              <h3 className="text-xl font-bold text-slate-600">
+                Genera etiquetas Éxito
+              </h3>
+              <p className="text-sm text-slate-400">
+                Carga el Excel de pedidos para generar las etiquetas en formato
+                ZPL listas para imprimir.
+              </p>
+            </div>
           </div>
         </div>
       )}
@@ -588,7 +647,7 @@ export function ExitoLabelsView() {
       {labels.length > 0 && (
         <div
           className={cn(
-            "w-full rounded-xl border shadow-sm bg-white transition-all duration-300 overflow-hidden",
+            "w-full rounded-xl border border-[#E7D2DA] shadow-sm bg-white transition-all duration-300 overflow-hidden",
             isFullscreen &&
               "fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm",
           )}
@@ -599,14 +658,14 @@ export function ExitoLabelsView() {
               isFullscreen ? "m-4 w-[calc(100%-2rem)] h-[calc(100%-2rem)]" : "",
             )}
           >
-            <div className="w-full h-full rounded-xl border shadow-sm bg-white flex flex-col overflow-hidden">
+            <div className="w-full h-full rounded-xl border border-[#E7D2DA] shadow-sm bg-white flex flex-col overflow-hidden">
               {/* Header */}
-              <div className="border-b bg-gradient-to-r from-slate-50 via-white to-slate-50/50 p-4 flex-shrink-0">
+              <div className="border-b border-[#F2E5EA] bg-gradient-to-r from-slate-50 via-white to-slate-50/50 p-4 flex-shrink-0">
                 <div className="flex flex-col gap-3">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <div className="p-2.5 bg-gradient-to-br from-green-500/10 to-green-500/5 rounded-xl">
-                        <Tag className="h-4 w-4 text-green-600" />
+                      <div className="p-2.5 bg-gradient-to-br from-[#7A1F3D]/10 to-[#7A1F3D]/5 rounded-xl">
+                        <Tag className="h-4 w-4 text-[#7A1F3D]" />
                       </div>
                       <div>
                         <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
@@ -771,7 +830,7 @@ export function ExitoLabelsView() {
                                   className="text-xs gap-2"
                                 >
                                   {selectedPrinter === p ? (
-                                    <Check className="h-3.5 w-3.5 text-green-500 flex-shrink-0" />
+                                    <Check className="h-3.5 w-3.5 text-[#7A1F3D] flex-shrink-0" />
                                   ) : (
                                     <div className="h-3.5 w-3.5 flex-shrink-0" />
                                   )}
@@ -787,7 +846,7 @@ export function ExitoLabelsView() {
                                 <Button
                                   variant="default"
                                   size="sm"
-                                  className="w-full h-8 text-xs bg-green-600 hover:bg-green-700 gap-2"
+                                  className="w-full h-8 text-xs bg-[#7A1F3D] hover:bg-[#681934] gap-2"
                                   onClick={() =>
                                     printLabels(
                                       generateExitoBatchZpl(sortedData),
@@ -817,7 +876,7 @@ export function ExitoLabelsView() {
                           <Button
                             variant="default"
                             size="sm"
-                            className="h-8 gap-1.5 bg-green-600 hover:bg-green-700"
+                            className="h-8 gap-1.5 bg-[#7A1F3D] hover:bg-[#681934]"
                           >
                             <Download className="h-3.5 w-3.5" />
                             <span className="text-xs hidden sm:inline">
@@ -830,7 +889,7 @@ export function ExitoLabelsView() {
                             onClick={() => exportData("zpl")}
                             className="text-xs gap-2"
                           >
-                            <FileCode2 className="h-3.5 w-3.5 text-green-600" />
+                            <FileCode2 className="h-3.5 w-3.5 text-[#7A1F3D]" />
                             Descargar ZPL
                           </DropdownMenuItem>
                           <DropdownMenuItem
@@ -840,7 +899,7 @@ export function ExitoLabelsView() {
                             }
                             className="text-xs gap-2"
                           >
-                            <Eye className="h-3.5 w-3.5 text-emerald-600" />
+                            <Eye className="h-3.5 w-3.5 text-[#7A1F3D]" />
                             Vista previa
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
@@ -888,7 +947,7 @@ export function ExitoLabelsView() {
                           variant="outline"
                           className="gap-1.5 px-2 py-0.5 text-[10px]"
                         >
-                          <Tag className="h-3 w-3 text-green-500" />
+                          <Tag className="h-3 w-3 text-[#7A1F3D]" />
                           {stats.total} etiquetas
                         </Badge>
                         <Badge
@@ -902,7 +961,7 @@ export function ExitoLabelsView() {
                           variant="outline"
                           className="gap-1.5 px-2 py-0.5 text-[10px]"
                         >
-                          <Warehouse className="h-3 w-3 text-amber-500" />
+                          <Warehouse className="h-3 w-3 text-[#7A1F3D]" />
                           {stats.uniqueTiendas} tiendas
                         </Badge>
                       </div>
@@ -1070,7 +1129,7 @@ export function ExitoLabelsView() {
                                           }
                                         >
                                           {copiedRow === i ? (
-                                            <Check className="h-3.5 w-3.5 text-green-500" />
+                                            <Check className="h-3.5 w-3.5 text-[#7A1F3D]" />
                                           ) : (
                                             <Copy className="h-3.5 w-3.5" />
                                           )}
@@ -1167,14 +1226,14 @@ export function ExitoLabelsView() {
               )}
 
               {/* Footer */}
-              <div className="bg-gradient-to-r from-slate-50 via-white to-slate-50/50 p-3 border-t flex-shrink-0">
+              <div className="bg-gradient-to-r from-slate-50 via-white to-slate-50/50 p-3 border-t border-[#F2E5EA] flex-shrink-0">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <Badge
                       variant="outline"
                       className="gap-1.5 px-2 py-0.5 text-[10px]"
                     >
-                      <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                      <div className="w-1.5 h-1.5 rounded-full bg-[#7A1F3D] animate-pulse" />
                       {sortedData.length} etiquetas
                     </Badge>
                     {sortedData.length < labels.length && (
@@ -1189,7 +1248,7 @@ export function ExitoLabelsView() {
                   <div className="flex items-center gap-2">
                     <Badge
                       variant="default"
-                      className="bg-green-50 text-green-700 hover:bg-green-50 border-green-200 gap-1.5 text-[10px]"
+                      className="bg-[#F8F1F4] text-[#7A1F3D] hover:bg-[#F8F1F4] border-[#E7D2DA] gap-1.5 text-[10px]"
                     >
                       <Check className="h-3 w-3" />
                       ZPL generado
@@ -1219,7 +1278,7 @@ export function ExitoLabelsView() {
         >
           <DialogHeader>
             <DialogTitle className="text-sm flex items-center gap-2">
-              <Eye className="h-4 w-4 text-green-600" />
+              <Eye className="h-4 w-4 text-[#7A1F3D]" />
               Vista previa de etiqueta
               {previewLabel && (
                 <span className="text-xs font-normal text-slate-500 ml-2">
@@ -1266,7 +1325,7 @@ export function ExitoLabelsView() {
               </div>
               {selectedPrinter && (
                 <Button
-                  className="w-full text-xs bg-green-600 hover:bg-green-700 gap-2"
+                  className="w-full text-xs bg-[#7A1F3D] hover:bg-[#681934] gap-2"
                   size="sm"
                   disabled={printingRows.has(sortedData.indexOf(previewLabel))}
                   onClick={() => {

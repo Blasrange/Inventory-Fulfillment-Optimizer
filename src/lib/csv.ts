@@ -90,42 +90,65 @@ function parseExcelData(
 
   if (jsonData.length < 1) return [];
 
-  const headerRow = jsonData[0];
-  const headers = headerRow.map((h) =>
-    String(h || "")
-      .trim()
-      .toLowerCase(),
-  );
-
   const headerIndices: Record<string, number> = {};
   const internalKeys = Object.keys(columnMapping);
   const optionalInternalKeys = ["fechavencimiento", "diasfpc", "lote"];
 
-  internalKeys.forEach((internalKey) => {
-    const possibleHeaders = columnMapping[internalKey].map((h) =>
-      h.toLowerCase(),
+  // Busca la fila de cabecera real (no siempre viene en la primera fila del Excel).
+  let headerRowIndex = -1;
+  const maxRowsToScan = Math.min(jsonData.length, 200);
+
+  for (let r = 0; r < maxRowsToScan; r++) {
+    const row = jsonData[r] || [];
+    const headers = row.map((h) =>
+      String(h || "")
+        .trim()
+        .toLowerCase(),
     );
-    let foundIndex = -1;
 
-    for (const pHeader of possibleHeaders) {
-      const index = headers.indexOf(pHeader);
-      if (index !== -1) {
-        foundIndex = index;
-        break;
-      }
-    }
+    const candidateIndices: Record<string, number> = {};
+    let missingRequired = false;
 
-    if (foundIndex !== -1) {
-      headerIndices[internalKey] = foundIndex;
-    } else if (!optionalInternalKeys.includes(internalKey.toLowerCase())) {
-      throw new Error(
-        `Columna requerida no encontrada en Excel. Para "${internalKey}", se esperaba una de: "${columnMapping[internalKey].join('", "')}"`,
+    internalKeys.forEach((internalKey) => {
+      const possibleHeaders = columnMapping[internalKey].map((h) =>
+        h.toLowerCase(),
       );
+      let foundIndex = -1;
+
+      for (const pHeader of possibleHeaders) {
+        const index = headers.indexOf(pHeader);
+        if (index !== -1) {
+          foundIndex = index;
+          break;
+        }
+      }
+
+      if (foundIndex !== -1) {
+        candidateIndices[internalKey] = foundIndex;
+      } else if (!optionalInternalKeys.includes(internalKey.toLowerCase())) {
+        missingRequired = true;
+      }
+    });
+
+    if (!missingRequired) {
+      headerRowIndex = r;
+      Object.assign(headerIndices, candidateIndices);
+      break;
     }
-  });
+  }
+
+  if (headerRowIndex === -1) {
+    internalKeys.forEach((internalKey) => {
+      if (!optionalInternalKeys.includes(internalKey.toLowerCase())) {
+        throw new Error(
+          `Columna requerida no encontrada en Excel. Para "${internalKey}", se esperaba una de: "${columnMapping[internalKey].join('", "')}"`,
+        );
+      }
+    });
+  }
 
   const data = jsonData
-    .slice(1)
+    .slice(headerRowIndex + 1)
     .map((row) => {
       const record: Record<string, any> = {};
       for (const jsonKey in headerIndices) {
