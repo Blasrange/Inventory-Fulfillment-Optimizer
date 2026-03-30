@@ -76,10 +76,14 @@ export const wmsInventoryCrossMapping = {
 
 // Modulo: Cruce de Lotes (fuente SAP - entrada)
 export const sapLotCrossMapping = {
-  sku: ["Material", "SKU", "Codigo", "Código", "Material"],
+  sku: ["Material", "SKU", "Codigo", "Código", "Material", "Material"],
   descripcion: ["Texto breve de material", "Descripcion", "Descripción"],
   lote: ["Lote", "Ce. Lote"],
   cantidad: [
+    "Ctd.real dest.",
+    "Ctd.real dest",
+    "Ctd real dest.",
+    "Ctd real dest",
     "Ctd teórica 'desde'",
     "Ctd Teórica",
     "Cantidad Teórica",

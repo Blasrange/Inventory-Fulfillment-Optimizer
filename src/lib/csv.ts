@@ -1,5 +1,39 @@
 import * as XLSX from "xlsx";
 
+function normalizeHeaderValue(value: unknown): string {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\u00a0/g, " ")
+    .toLowerCase()
+    .replace(/["'`´‘’“”.,:;()/\\_-]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+function findHeaderIndex(headers: string[], possibleHeaders: string[]): number {
+  for (const possibleHeader of possibleHeaders) {
+    const index = headers.indexOf(normalizeHeaderValue(possibleHeader));
+    if (index !== -1) {
+      return index;
+    }
+  }
+
+  return -1;
+}
+
+function getMissingRequiredColumns(
+  columnMapping: Record<string, string[]>,
+  headerIndices: Record<string, number>,
+  optionalInternalKeys: string[],
+): string[] {
+  return Object.keys(columnMapping).filter(
+    (internalKey) =>
+      !(internalKey in headerIndices) &&
+      !optionalInternalKeys.includes(internalKey.toLowerCase()),
+  );
+}
+
 /**
  * Parsea archivos de texto (CSV/TSV).
  */
@@ -13,36 +47,38 @@ function parseTextData(
 
   const headerLine = lines[0];
   const delimiter = headerLine.includes("\t") ? "\t" : ",";
-  const headers = headerLine
-    .split(delimiter)
-    .map((h) => h.trim().toLowerCase());
+  const headers = headerLine.split(delimiter).map(normalizeHeaderValue);
 
   const headerIndices: Record<string, number> = {};
   const internalKeys = Object.keys(columnMapping);
   const optionalInternalKeys = ["fechavencimiento", "diasfpc", "lote"];
 
   internalKeys.forEach((internalKey) => {
-    const possibleHeaders = columnMapping[internalKey].map((h) =>
-      h.toLowerCase(),
-    );
-    let foundIndex = -1;
-
-    for (const pHeader of possibleHeaders) {
-      const index = headers.indexOf(pHeader);
-      if (index !== -1) {
-        foundIndex = index;
-        break;
-      }
-    }
+    const foundIndex = findHeaderIndex(headers, columnMapping[internalKey]);
 
     if (foundIndex !== -1) {
       headerIndices[internalKey] = foundIndex;
-    } else if (!optionalInternalKeys.includes(internalKey.toLowerCase())) {
-      throw new Error(
-        `Columna requerida no encontrada. Para "${internalKey}", se esperaba una de: "${columnMapping[internalKey].join('", "')}"`,
-      );
     }
   });
+
+  const missingRequiredColumns = getMissingRequiredColumns(
+    columnMapping,
+    headerIndices,
+    optionalInternalKeys,
+  );
+
+  if (missingRequiredColumns.length > 0) {
+    const details = missingRequiredColumns
+      .map(
+        (internalKey) =>
+          `"${internalKey}": "${columnMapping[internalKey].join('", "')}"`,
+      )
+      .join(", ");
+
+    throw new Error(
+      `Columnas requeridas no encontradas. Se esperaba alguna de estas opciones por campo: ${details}`,
+    );
+  }
 
   const data = lines
     .slice(1)
@@ -100,28 +136,13 @@ function parseExcelData(
 
   for (let r = 0; r < maxRowsToScan; r++) {
     const row = jsonData[r] || [];
-    const headers = row.map((h) =>
-      String(h || "")
-        .trim()
-        .toLowerCase(),
-    );
+    const headers = row.map(normalizeHeaderValue);
 
     const candidateIndices: Record<string, number> = {};
     let missingRequired = false;
 
     internalKeys.forEach((internalKey) => {
-      const possibleHeaders = columnMapping[internalKey].map((h) =>
-        h.toLowerCase(),
-      );
-      let foundIndex = -1;
-
-      for (const pHeader of possibleHeaders) {
-        const index = headers.indexOf(pHeader);
-        if (index !== -1) {
-          foundIndex = index;
-          break;
-        }
-      }
+      const foundIndex = findHeaderIndex(headers, columnMapping[internalKey]);
 
       if (foundIndex !== -1) {
         candidateIndices[internalKey] = foundIndex;
@@ -138,13 +159,21 @@ function parseExcelData(
   }
 
   if (headerRowIndex === -1) {
-    internalKeys.forEach((internalKey) => {
-      if (!optionalInternalKeys.includes(internalKey.toLowerCase())) {
-        throw new Error(
-          `Columna requerida no encontrada en Excel. Para "${internalKey}", se esperaba una de: "${columnMapping[internalKey].join('", "')}"`,
-        );
-      }
-    });
+    const missingRequiredColumns = getMissingRequiredColumns(
+      columnMapping,
+      headerIndices,
+      optionalInternalKeys,
+    );
+    const details = missingRequiredColumns
+      .map(
+        (internalKey) =>
+          `"${internalKey}": "${columnMapping[internalKey].join('", "')}"`,
+      )
+      .join(", ");
+
+    throw new Error(
+      `No se encontró una fila de encabezados válida en Excel. Se esperaba alguna de estas opciones por campo: ${details}`,
+    );
   }
 
   const data = jsonData
