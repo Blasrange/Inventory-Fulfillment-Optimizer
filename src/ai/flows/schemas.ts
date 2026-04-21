@@ -34,6 +34,7 @@ export const InventoryDataSchema = z.array(
       .describe(
         'Estado del stock: solo se considera utilizable el marcado como "Disponible en facturación según el cliente".',
       ),
+    fechaEntrada: z.string().optional().nullable(),
     fechaVencimiento: z.string().optional().nullable(),
     diasFPC: z.number().optional().nullable(),
     lote: z.string().optional().nullable(),
@@ -223,6 +224,30 @@ export const ShelfLifeResultItemSchema = z.object({
 export const ShelfLifeResultSchema = z.object({
   results: z.array(ShelfLifeResultItemSchema),
 });
+
+export const InventoryAgeResultItemSchema = z.object({
+  sku: z.string(),
+  descripcion: z.string(),
+  lpn: z.string(),
+  localizacion: z.string(),
+  lote: z.string().optional().nullable(),
+  estado: z.string(),
+  fechaEntrada: z.string().optional().nullable(),
+  diasEnInventario: z.number().nullable(),
+  rangoEdad: z.enum([
+    "0-3 meses",
+    "3-6 meses",
+    "6-12 meses",
+    "> 12 meses",
+    "Sin fecha de entrada",
+  ]),
+});
+
+export const InventoryAgeResultSchema = z.object({
+  results: z.array(InventoryAgeResultItemSchema),
+});
+
+export type InventoryAgeResult = z.infer<typeof InventoryAgeResultSchema>;
 
 // NUEVOS ESQUEMAS PARA ENTRADAS (INBOUND) CON COERCIÓN REFORZADA
 export const InboundItemSchema = z.object({

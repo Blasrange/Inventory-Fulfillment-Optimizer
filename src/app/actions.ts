@@ -9,6 +9,7 @@ import { runInventoryCross } from "@/ai/flows/inventory-cross";
 import { runLotCross } from "@/ai/flows/lot-cross";
 import { runInboundProcess } from "@/ai/flows/inbound";
 import { runShelfLifeAnalysis } from "@/ai/flows/shelf-life";
+import { runInventoryAgeAnalysis } from "@/ai/flows/inventory-age";
 import * as XLSX from "xlsx";
 import type {
   GenerateRestockSuggestionsOutput,
@@ -17,6 +18,7 @@ import type {
   LotCrossResult,
   InboundResult,
   ShelfLifeResult,
+  InventoryAgeResult,
 } from "@/ai/flows/schemas";
 
 // ============================================================================
@@ -122,7 +124,8 @@ export async function runAnalysis(
     | "cross"
     | "lotCross"
     | "inbound"
-    | "shelfLife",
+    | "shelfLife"
+    | "inventoryAge",
   inventoryData: any[] | null,
   salesData: any[] | null,
   minMaxData: any[] | null,
@@ -141,7 +144,8 @@ export async function runAnalysis(
     | InventoryCrossResult
     | LotCrossResult
     | InboundResult
-    | ShelfLifeResult;
+    | ShelfLifeResult
+    | InventoryAgeResult;
   error?: string;
 }> {
   try {
@@ -204,6 +208,16 @@ export async function runAnalysis(
         data: await runShelfLifeAnalysis({
           inventoryData,
           shelfLifeMasterData,
+        }),
+      };
+    }
+
+    if (analysisMode === "inventoryAge") {
+      if (!inventoryData)
+        return { error: "❌ Falta el inventario con fecha de entrada." };
+      return {
+        data: await runInventoryAgeAnalysis({
+          inventoryData,
         }),
       };
     }
@@ -497,10 +511,17 @@ export async function generateWmsFiles(
 export async function generateFullReportFile(
   suggestions: GenerateRestockSuggestionsOutput | null,
   missingProducts: MissingProductsOutput[] | null,
-  analysisMode: "sales" | "levels" | "cross" | "lotCross" | "shelfLife",
+  analysisMode:
+    | "sales"
+    | "levels"
+    | "cross"
+    | "lotCross"
+    | "shelfLife"
+    | "inventoryAge",
   crossResults?: any[] | null,
   lotCrossResults?: any[] | null,
   shelfLifeResults?: any[] | null,
+  inventoryAgeResults?: any[] | null,
 ): Promise<{ data?: { file: string; filename: string }; error?: string }> {
   try {
     const wb = XLSX.utils.book_new();
@@ -524,6 +545,26 @@ export async function generateFullReportFile(
         columnaEstado: Object.keys(sheetData[0]).indexOf("Estado"),
       });
       XLSX.utils.book_append_sheet(wb, ws, "Vida Útil");
+    }
+
+    else if (analysisMode === "inventoryAge" && inventoryAgeResults?.length) {
+      const sheetData = inventoryAgeResults.map((item: any) => ({
+        SKU: item.sku,
+        Descripción: item.descripcion,
+        LPN: item.lpn,
+        Ubicación: item.localizacion,
+        Lote: item.lote || "S/L",
+        Estado: item.estado || "S/E",
+        "Fecha de Entrada": item.fechaEntrada || "S/F",
+        "Días en Inventario": item.diasEnInventario ?? "S/D",
+        "Rango de Edad": item.rangoEdad,
+      }));
+
+      const ws = XLSX.utils.json_to_sheet(sheetData);
+      aplicarEstilosModernos(ws, {
+        columnaEstado: Object.keys(sheetData[0]).indexOf("Rango de Edad"),
+      });
+      XLSX.utils.book_append_sheet(wb, ws, "Edad Inventario");
     }
 
     // REPORTE CRUCE

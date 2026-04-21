@@ -34,6 +34,29 @@ function getMissingRequiredColumns(
   );
 }
 
+function normalizeDateCell(value: unknown): string {
+  if (value instanceof Date) {
+    try {
+      return value.toISOString().split("T")[0];
+    } catch {
+      return String(value || "");
+    }
+  }
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+    const parsedDate = new Date(
+      excelEpoch.getTime() + Math.round(value * 86400 * 1000),
+    );
+
+    if (!Number.isNaN(parsedDate.getTime())) {
+      return parsedDate.toISOString().split("T")[0];
+    }
+  }
+
+  return String(value ?? "").trim();
+}
+
 /**
  * Parsea archivos de texto (CSV/TSV).
  */
@@ -51,7 +74,12 @@ function parseTextData(
 
   const headerIndices: Record<string, number> = {};
   const internalKeys = Object.keys(columnMapping);
-  const optionalInternalKeys = ["fechavencimiento", "diasfpc", "lote"];
+  const optionalInternalKeys = [
+    "fechaentrada",
+    "fechavencimiento",
+    "diasfpc",
+    "lote",
+  ];
 
   internalKeys.forEach((internalKey) => {
     const foundIndex = findHeaderIndex(headers, columnMapping[internalKey]);
@@ -128,7 +156,12 @@ function parseExcelData(
 
   const headerIndices: Record<string, number> = {};
   const internalKeys = Object.keys(columnMapping);
-  const optionalInternalKeys = ["fechavencimiento", "diasfpc", "lote"];
+  const optionalInternalKeys = [
+    "fechaentrada",
+    "fechavencimiento",
+    "diasfpc",
+    "lote",
+  ];
 
   // Busca la fila de cabecera real (no siempre viene en la primera fila del Excel).
   let headerRowIndex = -1;
@@ -184,12 +217,8 @@ function parseExcelData(
         const index = headerIndices[jsonKey];
         let value = row[index];
 
-        if (jsonKey === "fechaVencimiento" && value instanceof Date) {
-          try {
-            value = value.toISOString().split("T")[0];
-          } catch (e) {
-            value = String(row[index] || "");
-          }
+        if (jsonKey === "fechaVencimiento" || jsonKey === "fechaEntrada") {
+          value = normalizeDateCell(value);
         } else if (numericColumns.includes(jsonKey)) {
           if (typeof value === "string") {
             value = parseFloat(value.replace(/\./g, "").replace(",", ".")) || 0;

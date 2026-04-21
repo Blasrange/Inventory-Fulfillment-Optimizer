@@ -39,6 +39,7 @@ import type {
   InventoryCrossResult,
   LotCrossResult,
   ShelfLifeResult,
+  InventoryAgeResult,
 } from "@/ai/flows/schemas";
 import { Logo } from "@/components/icons";
 import { ResultsTable } from "@/components/results-table";
@@ -48,6 +49,7 @@ import { LotCrossTable } from "../components/lot-cross-table";
 import { InboundMapper } from "@/components/inbound-mapper";
 import { InboundResultsTable } from "@/components/inbound-results-table";
 import { ShelfLifeTable } from "@/components/shelf-life-table";
+import { InventoryAgeTable } from "@/components/inventory-age-table";
 import { ExitoLabelsView } from "@/components/exito-labels-view";
 import {
   DropdownMenu,
@@ -87,6 +89,7 @@ type AnalysisMode =
   | "lotCross"
   | "inbound"
   | "shelfLife"
+  | "inventoryAge"
   | "exitoLabels";
 
 export default function Home() {
@@ -131,6 +134,9 @@ export default function Home() {
     null,
   );
   const [shelfLifeResults, setShelfLifeResults] = useState<any[] | null>(null);
+  const [inventoryAgeResults, setInventoryAgeResults] = useState<any[] | null>(
+    null,
+  );
 
   const [isLoading, setIsLoading] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -153,6 +159,7 @@ export default function Home() {
     setLotCrossResults(null);
     setSortConfig(null);
     setShelfLifeResults(null);
+    setInventoryAgeResults(null);
 
     // Resetear resultados específicos de inbound
     if (mode === "inbound") {
@@ -242,7 +249,8 @@ export default function Home() {
         if (
           analysisMode === "sales" ||
           analysisMode === "levels" ||
-          analysisMode === "shelfLife"
+          analysisMode === "shelfLife" ||
+          analysisMode === "inventoryAge"
         ) {
           resetResultsForMode(analysisMode);
         }
@@ -456,6 +464,59 @@ export default function Home() {
       return;
     }
 
+    if (analysisMode === "inventoryAge") {
+      if (!inventoryData) {
+        return toast({
+          variant: "destructive",
+          title: "❌ Falta archivo",
+          description:
+            "Carga el inventario WMS con fecha de entrada para continuar.",
+          className:
+            "bg-gradient-to-r from-red-300 to-red-400 text-white border-0 shadow-lg",
+        });
+      }
+
+      setIsLoading(true);
+      setInventoryAgeResults(null);
+
+      const result = await runAnalysis(
+        "inventoryAge",
+        inventoryData,
+        null,
+        null,
+        null,
+        null,
+        null,
+        false,
+      );
+
+      setIsLoading(false);
+
+      if (result.error) {
+        toast({
+          variant: "destructive",
+          title: "❌ Error en el análisis",
+          description: result.error,
+          className:
+            "bg-gradient-to-r from-red-300 to-red-400 text-white border-0 shadow-lg",
+        });
+      } else if (result.data) {
+        setInventoryAgeResults((result.data as InventoryAgeResult).results);
+        const totalItems = (result.data as InventoryAgeResult).results.length;
+        const oldItems = (result.data as InventoryAgeResult).results.filter(
+          (item) => item.rangoEdad === "> 12 meses",
+        ).length;
+
+        toast({
+          title: "✨ Análisis Completado",
+          description: `Se analizaron ${totalItems} pallets. ${oldItems} tienen más de 12 meses.`,
+          className:
+            "bg-gradient-to-r from-green-300 to-green-400 text-white border-0 shadow-lg",
+        });
+      }
+      return;
+    }
+
     // Validaciones para otros modos
     if (analysisMode === "sales" && (!salesData || !inventoryData)) {
       return toast({
@@ -502,6 +563,7 @@ export default function Home() {
     setLotCrossResults(null);
     setSortConfig(null);
     setShelfLifeResults(null);
+    setInventoryAgeResults(null);
 
     const result = await runAnalysis(
       analysisMode as any,
@@ -614,6 +676,7 @@ export default function Home() {
       crossResults?.results,
       lotCrossResults?.results,
       shelfLifeResults,
+      inventoryAgeResults,
     );
 
     setIsDownloading(false);
@@ -663,11 +726,11 @@ export default function Home() {
     }
 
     // Para shelf life no hay archivos WMS
-    if (analysisMode === "shelfLife") {
+    if (analysisMode === "shelfLife" || analysisMode === "inventoryAge") {
       toast({
         variant: "destructive",
         title: "❌ No aplicable",
-        description: "El análisis de vida útil no genera archivos WMS.",
+        description: "Este módulo no genera archivos WMS.",
         className:
           "bg-gradient-to-r from-red-300 to-red-400 text-white border-0 shadow-lg",
       });
@@ -716,7 +779,7 @@ export default function Home() {
 
   const handleDownloadBoth = async () => {
     // No aplicable para shelf life
-    if (analysisMode === "shelfLife") {
+    if (analysisMode === "shelfLife" || analysisMode === "inventoryAge") {
       handleDownloadReport();
       return;
     }
@@ -732,6 +795,7 @@ export default function Home() {
         crossResults?.results,
         lotCrossResults?.results,
         shelfLifeResults,
+        inventoryAgeResults,
       );
 
       if (fullReport.error) {
@@ -812,6 +876,7 @@ export default function Home() {
     if (analysisMode === "lotCross") return !!lotCrossResults;
     if (analysisMode === "inbound") return !!inboundResults;
     if (analysisMode === "shelfLife") return !!shelfLifeResults;
+    if (analysisMode === "inventoryAge") return !!inventoryAgeResults;
     return !!(suggestions || missingProducts);
   }, [
     suggestions,
@@ -821,6 +886,7 @@ export default function Home() {
     inboundResults,
     analysisMode,
     shelfLifeResults,
+    inventoryAgeResults,
   ]);
 
   const isInModuleView = selectedModule !== null;
@@ -838,6 +904,8 @@ export default function Home() {
       case "inbound":
         return <Upload className="h-5 w-5" />;
       case "shelfLife":
+        return <Clock className="h-5 w-5" />;
+      case "inventoryAge":
         return <Clock className="h-5 w-5" />;
       case "exitoLabels":
         return <Tag className="h-5 w-5" />;
@@ -858,6 +926,8 @@ export default function Home() {
         return "from-amber-500 to-orange-500";
       case "shelfLife":
         return "from-red-500 to-red-600";
+      case "inventoryAge":
+        return "from-orange-500 to-amber-500";
       case "exitoLabels":
         return "from-[#7A1F3D] to-[#8F2548]";
     }
@@ -877,6 +947,8 @@ export default function Home() {
         return "Entradas de Mercancía";
       case "shelfLife":
         return "Análisis de Vida Útil";
+      case "inventoryAge":
+        return "Edad del Inventario";
       case "exitoLabels":
         return "Etiquetas Éxito";
     }
@@ -896,6 +968,8 @@ export default function Home() {
         return "Transforma archivos de proveedores a formato WMS";
       case "shelfLife":
         return "Evalúa lotes contra días mínimos de vida útil";
+      case "inventoryAge":
+        return "Clasifica pallets por antigüedad desde la fecha de entrada";
       case "exitoLabels":
         return "Genera etiquetas ZPL desde el Excel de pedidos Éxito";
     }
@@ -908,6 +982,7 @@ export default function Home() {
     "lotCross",
     "inbound",
     "shelfLife",
+    "inventoryAge",
     "exitoLabels",
   ];
 
@@ -976,7 +1051,8 @@ export default function Home() {
                       (analysisMode === "lotCross" &&
                         (!sapLotData || !wmsLotData)) ||
                       (analysisMode === "shelfLife" &&
-                        (!inventoryData || !shelfLifeMasterData))
+                        (!inventoryData || !shelfLifeMasterData)) ||
+                      (analysisMode === "inventoryAge" && !inventoryData)
                     }
                     className={cn(
                       "group relative rounded-lg bg-gradient-to-r px-5 py-2 font-semibold text-white shadow-lg transition-all duration-300 hover:shadow-2xl hover:scale-[1.02] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed",
@@ -1114,7 +1190,8 @@ export default function Home() {
 
         <main
           className={cn(
-            "relative z-10 mx-auto w-full max-w-7xl flex-1 space-y-8 p-4 md:p-8",
+            "relative z-10 mx-auto w-full flex-1 space-y-8 p-4 md:p-8",
+            isInModuleView ? "max-w-none" : "max-w-7xl",
             !isInModuleView && "lg:h-[calc(100vh-5rem)] lg:overflow-hidden",
           )}
         >
@@ -1329,7 +1406,7 @@ export default function Home() {
                   </>
                 )}
                 {analysisMode === "inbound" && (
-                  <div className="col-span-full mx-auto w-full max-w-2xl">
+                  <div className="col-span-full w-full">
                     <FileUploader
                       title="Archivo Fuente de Proveedor"
                       onFileRead={(c) => handleFileRead(c, "inbound")}
@@ -1353,6 +1430,16 @@ export default function Home() {
                       recordCount={shelfLifeMasterData?.length}
                     />
                   </>
+                )}
+                {analysisMode === "inventoryAge" && (
+                  <div className="col-span-full w-full">
+                    <FileUploader
+                      title="Inventario (WMS) con Fecha de Entrada"
+                      onFileRead={(c) => handleFileRead(c, "inventory")}
+                      onFileReset={() => handleFileReset("inventory")}
+                      recordCount={inventoryData?.length}
+                    />
+                  </div>
                 )}
               </div>
 
@@ -1420,9 +1507,18 @@ export default function Home() {
                           </div>
                         )}
 
+                        {analysisMode === "inventoryAge" && inventoryAgeResults && (
+                          <div>
+                            <div className="overflow-hidden rounded-xl border border-orange-200 bg-orange-50/50 shadow-inner">
+                              <InventoryAgeTable data={inventoryAgeResults} />
+                            </div>
+                          </div>
+                        )}
+
                         {missingProducts &&
                           missingProducts.length > 0 &&
-                          analysisMode !== "shelfLife" && (
+                          analysisMode !== "shelfLife" &&
+                          analysisMode !== "inventoryAge" && (
                             <div>
                               <div className="overflow-hidden rounded-xl border border-rose-200 bg-rose-50/50 shadow-inner">
                                 <MissingStockTable products={missingProducts} />
@@ -1432,7 +1528,8 @@ export default function Home() {
 
                         {suggestions &&
                           suggestions.length > 0 &&
-                          analysisMode !== "shelfLife" && (
+                          analysisMode !== "shelfLife" &&
+                          analysisMode !== "inventoryAge" && (
                             <div>
                               <div className="overflow-hidden rounded-xl border border-blue-200 bg-blue-50/50 shadow-inner">
                                 <ResultsTable
@@ -1492,6 +1589,8 @@ export default function Home() {
                               "Mapea tus entradas de mercancía"}
                             {analysisMode === "shelfLife" &&
                               "Analiza la vida útil de tu inventario"}
+                            {analysisMode === "inventoryAge" &&
+                              "Analiza la antigüedad de tu inventario"}
                           </h3>
                           <p className="text-slate-500">
                             {analysisMode === "cross" &&
@@ -1506,6 +1605,8 @@ export default function Home() {
                               "Carga el archivo del proveedor para transformarlo al formato WMS"}
                             {analysisMode === "shelfLife" &&
                               "Carga el inventario WMS y la maestra de vida útil para evaluar lotes"}
+                            {analysisMode === "inventoryAge" &&
+                              "Carga el inventario WMS con fecha de entrada para clasificar pallets por edad"}
                           </p>
                           <div className="mt-4 flex items-center justify-center gap-2">
                             <div className="h-2 w-2 animate-pulse rounded-full bg-blue-400"></div>
