@@ -65,6 +65,7 @@ const headers = [
   { key: "lpn", label: "LPN" },
   { key: "localizacion", label: "Ubicación" },
   { key: "lote", label: "Lote" },
+  { key: "disponible", label: "Disponible" },
   { key: "estado", label: "Estado" },
   { key: "fechaEntrada", label: "Fecha de Entrada" },
   { key: "diasEnInventario", label: "Días" },
@@ -652,6 +653,17 @@ export function InventoryAgeTable({
                               );
                             }
 
+                            if (header.key === "disponible") {
+                              return (
+                                <TableCell
+                                  key={header.key}
+                                  className="text-center font-mono text-xs text-slate-600"
+                                >
+                                  {Number(row.disponible ?? 0).toLocaleString()}
+                                </TableCell>
+                              );
+                            }
+
                             return (
                               <TableCell
                                 key={header.key}
@@ -732,6 +744,14 @@ export function InventoryAgeTable({
                                     </p>
                                     <div className="text-xs bg-white p-2.5 rounded-lg border break-all shadow-sm">
                                       {row.lote || "—"}
+                                    </div>
+                                  </div>
+                                  <div className="space-y-1.5 text-center">
+                                    <p className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">
+                                      Disponible
+                                    </p>
+                                    <div className="text-xs bg-white p-2.5 rounded-lg border break-all shadow-sm font-mono font-bold">
+                                      {Number(row.disponible ?? 0).toLocaleString()}
                                     </div>
                                   </div>
                                   <div className="space-y-1.5 text-center">

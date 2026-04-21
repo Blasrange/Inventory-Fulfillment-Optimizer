@@ -20,6 +20,13 @@ export const analysisConfig = {
    */
   IGNORED_LOCATIONS: ["PDIF-INV-1-10", "DEV-1-10"],
 
+  /**
+   * Lista de ubicaciones específicas de muelle que deben ignorarse completamente en el análisis.
+   * Esto es útil para excluir muelles de entrada y salida.
+   * @example ["MUELLE DE SALIDA", "MUELLE ENTRADA"]
+   */
+  IGNORED_LOCATIONS_MUELLE: ["MUELLE DE SALIDA", "MUELLE ENTRADA"],
+
    /**
    * Última parte de un código de ubicación que lo identifica como ubicación de picking.
    * Ejemplo: Para una ubicación "P1-A-1-5", "5" es la última parte.
@@ -35,7 +42,7 @@ export const analysisConfig = {
   /**
    * Lista de prefijos de ubicación (o nombres completos) que se considerarán como ubicaciones de stock de reserva.
    * El sistema verificará si el nombre de la ubicación comienza con alguno de estos valores (sin distinción entre mayúsculas y minúsculas).
-   * @example ["MUELLE ENTRADA", "ZONA DE RESERVA"]
+   * @example ["MUELLE ENTRADA", "MUELLE DE SALIDA", "ZONA DE RESERVA"]
    */
   ADDITIONAL_RESERVE_LOCATIONS: ["MUELLE ENTRADA"],
 };

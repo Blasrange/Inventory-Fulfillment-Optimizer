@@ -554,6 +554,7 @@ export async function generateFullReportFile(
         LPN: item.lpn,
         Ubicación: item.localizacion,
         Lote: item.lote || "S/L",
+        Disponible: item.disponible ?? 0,
         Estado: item.estado || "S/E",
         "Fecha de Entrada": item.fechaEntrada || "S/F",
         "Días en Inventario": item.diasEnInventario ?? "S/D",

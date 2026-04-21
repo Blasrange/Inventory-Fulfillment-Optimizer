@@ -231,6 +231,7 @@ export const InventoryAgeResultItemSchema = z.object({
   lpn: z.string(),
   localizacion: z.string(),
   lote: z.string().optional().nullable(),
+  disponible: z.number(),
   estado: z.string(),
   fechaEntrada: z.string().optional().nullable(),
   diasEnInventario: z.number().nullable(),

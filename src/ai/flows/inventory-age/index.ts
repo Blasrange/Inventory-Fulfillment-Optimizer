@@ -2,6 +2,7 @@
 
 import { ai } from "@/ai/genkit";
 import { z } from "zod";
+import { analysisConfig } from "../config";
 import { InventoryAgeResultSchema, InventoryDataSchema } from "../schemas";
 
 const InventoryAgeInputSchema = z.object({
@@ -64,8 +65,22 @@ const inventoryAgeFlow = ai.defineFlow(
       today.getUTCMonth(),
       today.getUTCDate(),
     );
+    const excludedLocationPrefixes = [
+      ...analysisConfig.IGNORED_LOCATIONS,
+      ...analysisConfig.IGNORED_LOCATIONS_MUELLE,
+    ].map((location) => location.trim().toUpperCase());
 
-    const results = input.inventoryData
+    const inventoryWithoutMuelle = input.inventoryData.filter((item) => {
+      const location = String(item.localizacion || "")
+        .trim()
+        .toUpperCase();
+
+      return !excludedLocationPrefixes.some((prefix) =>
+        location.startsWith(prefix),
+      );
+    });
+
+    const results = inventoryWithoutMuelle
       .map((item) => {
         const parsedEntryDate = parseInventoryDate(item.fechaEntrada);
         const entryUtc = parsedEntryDate
@@ -85,6 +100,7 @@ const inventoryAgeFlow = ai.defineFlow(
           lpn: item.lpn,
           localizacion: item.localizacion,
           lote: item.lote,
+          disponible: item.disponible,
           estado: item.estado,
           fechaEntrada: parsedEntryDate
             ? parsedEntryDate.toISOString().split("T")[0]
