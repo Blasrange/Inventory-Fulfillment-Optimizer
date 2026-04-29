@@ -70,10 +70,10 @@ export const shelfLifeColumnMapping = {
 
 // Modulo: Cruce de Inventario (fuente SAP)
 export const sapInventoryMapping = {
-  sku: ["Material", "Material"],
-  descripcion: ["Texto breve material"],
+  sku: ["Material", "Material", "Item"],
+  descripcion: ["Texto breve material", "Descripcion", "Descripción"],
   lote: ["Ce. Lote", "Lote"],
-  cantidad: ["Stock disponible", "WM stock disp.", "Stock total"],
+  cantidad: ["Stock disponible", "WM stock disp.", "Stock total", "Disponible", "Existencia"],
 };
 
 // Modulo: Cruce de Inventario (fuente WMS)
@@ -142,4 +142,93 @@ export const exitoLabelsColumnMapping = {
     "DESTINO",
   ],
   cantidad: ["CJ/UN", "CANT", "QTY", "UNIDADES", "CAJAS"],
+};
+
+// Module: Smart Assortment (Ventas y Stock)
+export const smartAssortmentSalesMapping = {
+  oboId: ["OBO_ID"],
+  oboOrder: ["OBO_ORDER"],
+  oboOrder2: ["OBO_ORDER2"],
+  oboInvoice: ["OBO_INVOICE"],
+  oboPurchaseOrder: ["OBO_PURCHASE_ORDER"],
+  oboTrackingNumber: ["OBO_TRACKING_NUMBER"],
+  carrier: ["CARRIER"],
+  oboOrderDatetime: ["OBO_ORDER_DATETIME"],
+  obtDescription: ["OBT_DESCRIPTION"],
+  cstCode: ["CST_CODE"],
+  cstName: ["CST_NAME"],
+  soldCode: ["SOLD_CODE"],
+  soldName: ["SOLD_NAME"],
+  strCode: ["STR_CODE"],
+  strName: ["STR_NAME"],
+  oboOrderDate: ["OBO_ORDER_DATE"],
+  oboState: ["OBO_STATE"],
+  oboNote: ["OBO_NOTE"],
+  oosDescription: ["OOS_DESCRIPTION"],
+  sku: ["MAI_SKU"],
+  description: ["MAI_DESCRIPTION"],
+  ean13: ["EAN13"],
+  qtyHandling: ["QTY_HANDLING"],
+  uomHandling: ["UOM_HANDLING"],
+  qtyOrder: ["QTY_ORDER"],
+  uomOrder: ["UOM_ORDER"],
+  qtyBooked: ["OOL_QTY_BOOKED"],
+  qtyPicked: ["OOL_QTY_PICKED"],
+  qtyDelivery: ["OOL_QTY_DELIVERY"],
+  channel: ["OBO_CHANNEL_DESCRIPTION"],
+  division: ["OBO_DIVISION_DESCRIPTION"],
+  qtyContainers: ["QTY_CONTAINERS"],
+  oboRemittance: ["OBO_REMITTANCE"],
+  oboRemittanceDate: ["OBO_REMITTANCE_DATE"],
+  day: ["DIA"],
+  month: ["MES"],
+  year: ["AÑO"],
+  specialClient: ["CLIENTE.ESP"],
+};
+
+export const smartAssortmentStockMapping = {
+  Codigo: ["Codigo", "codigo"],
+  LPN: ["LPN", "lpn"],
+  Localizacion: ["Localizacion", "localizacion"],
+  "Area Picking": ["Area Picking", "areaPicking"],
+  SKU: ["SKU", "sku"],
+  SKU2: ["SKU2", "sku2"],
+  Descripcion: ["Descripcion", "descripcion"],
+  Precio: ["Precio", "precio"],
+  "Tipo de Material": ["Tipo de Material", "tipoMaterial"],
+  "Categoría de Material": ["Categoría de Material", "categoriaMaterial"],
+  Unidades: ["Unidades", "unidades"],
+  Cajas: ["Cajas", "cajas"],
+  Reserva: ["Reserva", "reserva"],
+  Disponible: ["Disponible", "disponible"],
+  UDM: ["UDM", "udm"],
+  Embalaje: ["Embalaje", "embalaje"],
+  "Fecha de entrada": ["Fecha de entrada", "fechaEntrada"],
+  Estado: ["Estado", "estado"],
+  Lote: ["Lote", "lote"],
+  "Fecha de fabricacion": ["Fecha de fabricacion", "fechaFabricacion"],
+  "Fecha de vencimiento": ["Fecha de vencimiento", "fechaVencimiento"],
+  FPC: ["FPC", "fpc"],
+  Peso: ["Peso", "peso"],
+  Serial: ["Serial", "serial"],
+};
+
+export const smartAssortmentMaterialMasterMapping = {
+  lpn: ["LPN"],
+  localizacion: ["Localizacion", "Ubicacion"],
+  sku: ["SKU", "sku", "Codigo", "Material"],
+  descripcion: ["Descripcion", "Descripción", "Description"],
+  tipoMaterial: ["Tipo de Material", "TipoMaterial"],
+};
+
+// Modulo: Exportación de Inventario (Pasillo P10)
+export const exportInventoryMasterMapping = {
+  Cod: ["Cod"],
+  REFERENCIA: ["REFERENCIA", "Referencia", "Descripción", "Descripcion", "Nombre"],
+};
+
+export const exportInventoryMapping = {
+  Codigo: ["SKU", "Material"],
+  LPN: ["LPN", "Pallet", "Pallet ID"],
+  Localizacion: ["Localizacion", "Localización", "Ubicacion", "Location"],
 };

@@ -1,5 +1,4 @@
 "use server";
-
 import {
   generateSalesAnalysis,
   type AnalysisResult,
@@ -10,8 +9,11 @@ import { runLotCross } from "@/ai/flows/lot-cross";
 import { runInboundProcess } from "@/ai/flows/inbound";
 import { runShelfLifeAnalysis } from "@/ai/flows/shelf-life";
 import { runInventoryAgeAnalysis } from "@/ai/flows/inventory-age";
+import { runSmartAssortmentAnalysis } from "@/ai/flows/smart-assortment";
+import { generarExportacionPasilloP10Excel } from "@/ai/flows/export-inventory";
+import { analysisConfig } from "@/ai/flows/config";
 import * as XLSX from "xlsx";
-import type {
+import {
   GenerateRestockSuggestionsOutput,
   MissingProductsOutput,
   InventoryCrossResult,
@@ -19,7 +21,16 @@ import type {
   InboundResult,
   ShelfLifeResult,
   InventoryAgeResult,
+  MaterialMaestraSchema,
+  SurtidoInteligenteSalesSchema, 
+  SurtidoInteligenteStockSchema,
+  MaestraExportacionSchema, 
+  InventarioExportacionSchema,
 } from "@/ai/flows/schemas";
+
+// Limitar listeners globalmente para evitar warning de Node.js
+import { EventEmitter } from "events";
+EventEmitter.defaultMaxListeners = 50;
 
 // ============================================================================
 // FORMATO EXCEL
@@ -78,7 +89,7 @@ function aplicarEstilosModernos(
         } else if (valor.includes("Reserva")) {
           celda.s = { fill: { fgColor: { rgb: "D9E1F2" } } };
         } else if (valor.includes("Mixto")) {
-          celda.s = { fill: { fgColor: { rgb: "FFE699" } } }; // Color para lotes mixtos
+          celda.s = { fill: { fgColor: { rgb: "FFE699" } } };
         }
       }
     }
@@ -237,24 +248,20 @@ export async function runAnalysis(
 export async function generateInboundExcel(
   data: any[],
 ): Promise<{ file: string; filename: string }> {
-  // Función auxiliar para formatear fechas
   const formatearFecha = (fecha: any): string => {
     if (!fecha) return "";
 
     try {
-      // Si ya es un string, intentamos parsearlo
       let fechaObj: Date | null = null;
 
       if (fecha instanceof Date) {
         fechaObj = fecha;
       } else if (typeof fecha === "string") {
-        // Intentamos diferentes formatos de fecha
         const timestamp = Date.parse(fecha);
         if (!isNaN(timestamp)) {
           fechaObj = new Date(timestamp);
         }
       } else if (typeof fecha === "number") {
-        // Si es número, asumimos que es timestamp
         fechaObj = new Date(fecha);
       }
 
@@ -268,11 +275,9 @@ export async function generateInboundExcel(
       console.warn("Error formateando fecha:", e);
     }
 
-    // Si no podemos formatear, devolvemos el valor original como string
     return fecha?.toString() || "";
   };
 
-  // Procesamos los datos para formatear las fechas ANTES de convertirlos a hoja
   const datosFormateados = data.map((item) => ({
     N_ORDER: item.N_ORDER || "",
     ORDER2: item.ORDER2 || "",
@@ -326,10 +331,7 @@ export async function generateInboundExcel(
     ],
   });
 
-  // Opcional: Aplicar formato de texto a las columnas de fecha para asegurar que Excel las trate como texto
   const rango = XLSX.utils.decode_range(ws["!ref"] || "A1:A1");
-
-  // Índices de las columnas de fecha (basado en el header)
   const columnasFecha = [
     "ORDER_DATE",
     "SERVICE_DATE",
@@ -343,22 +345,18 @@ export async function generateInboundExcel(
     .map((col) => headerRow.indexOf(col))
     .filter((idx) => idx !== -1);
 
-  // Para cada fila de datos (omitimos el header porque ya lo manejamos con json_to_sheet)
   for (let fila = rango.s.r + 1; fila <= rango.e.r; fila++) {
     indicesFecha.forEach((col) => {
       const direccion = XLSX.utils.encode_cell({ r: fila, c: col });
       if (ws[direccion]) {
-        // Forzar que la celda sea tratada como texto
-        ws[direccion].t = "s"; // 's' significa string en la librería xlsx
+        ws[direccion].t = "s";
       }
     });
   }
 
   XLSX.utils.book_append_sheet(wb, ws, "INBOUND");
 
-  // ================= DATOS MAESTROS - FORMATO BONITO =====================
   const datos = [
-    // Tipos de Entrada
     ["📦 Tipos de pedidos de Entrada"],
     ["Código", "Nombre", "Estado"],
     ["101", "Entr. mercancías EM", "A"],
@@ -375,8 +373,6 @@ export async function generateInboundExcel(
     [],
     ["══════════════════════════"],
     [],
-
-    // Estados de Calidad
     ["✅ Estados de Calidad"],
     ["Código", "Nombre", "Estado"],
     ["X", "LOTE NO LIBRE", "A"],
@@ -390,8 +386,6 @@ export async function generateInboundExcel(
     [],
     ["══════════════════════════"],
     [],
-
-    // Proveedores
     ["🏢 Proveedores"],
     ["Nit", "Proveedor", "Ciudad"],
     ["830050346-8", "NESTLE PURINA PET CARE DE COLOMBIA", "MEDELLIN"],
@@ -399,24 +393,18 @@ export async function generateInboundExcel(
     ["9005222651", "AGRO UNION PURINA S.A.S.", "LA UNION"],
   ];
 
-  // Crear la hoja de Excel
   const wsDatosMaestros = XLSX.utils.aoa_to_sheet(datos);
-
-  // Ajustar ancho de columnas
   wsDatosMaestros["!cols"] = [{ wch: 20 }, { wch: 30 }];
-
-  // Agregar al libro
   XLSX.utils.book_append_sheet(wb, wsDatosMaestros, "Datos Maestros");
 
-  // CAMBIO IMPORTANTE: Usar bookType "xls" para Excel 97-2003
   const fileBase64 = XLSX.write(wb, {
     type: "base64",
-    bookType: "xls", // Cambiado de "xlsx" a "xls"
+    bookType: "xls",
   });
 
   return {
     file: fileBase64,
-    filename: `Entrada_WMS_${new Date().toISOString().slice(0, 10)}.xls`, // Cambiado a .xls
+    filename: `Entrada_WMS_${new Date().toISOString().slice(0, 10)}.xls`,
   };
 }
 
@@ -435,7 +423,7 @@ export async function generateWmsFiles(
     if (analysisMode === "sales") {
       const file1Data = tasks.flatMap((task) =>
         task.ubicacionesSugeridas
-          .filter((ubicacion) => !ubicacion.esEstibaCompleta) // Solo unidades parciales para LTLD
+          .filter((ubicacion) => !ubicacion.esEstibaCompleta)
           .map((ubicacion) => ({
             LTLD_LPN_SRC: ubicacion.lpn || "",
             LTLD_SKU: task.sku,
@@ -526,7 +514,6 @@ export async function generateFullReportFile(
   try {
     const wb = XLSX.utils.book_new();
 
-    // REPORTE VIDA ÚTIL
     if (analysisMode === "shelfLife" && shelfLifeResults?.length) {
       const sheetData = shelfLifeResults.map((item: any) => ({
         SKU: item.sku,
@@ -548,6 +535,7 @@ export async function generateFullReportFile(
     }
 
     else if (analysisMode === "inventoryAge" && inventoryAgeResults?.length) {
+      // Hoja principal de inventario por edad
       const sheetData = inventoryAgeResults.map((item: any) => ({
         SKU: item.sku,
         Descripción: item.descripcion,
@@ -558,17 +546,78 @@ export async function generateFullReportFile(
         Estado: item.estado || "S/E",
         "Fecha de Entrada": item.fechaEntrada || "S/F",
         "Días en Inventario": item.diasEnInventario ?? "S/D",
-        "Rango de Edad": item.rangoEdad,
+        "Rango de Antigüedad": item.rangoEdad,
       }));
 
       const ws = XLSX.utils.json_to_sheet(sheetData);
       aplicarEstilosModernos(ws, {
-        columnaEstado: Object.keys(sheetData[0]).indexOf("Rango de Edad"),
+        columnaEstado: Object.keys(sheetData[0]).indexOf("Rango de Antigüedad"),
       });
-      XLSX.utils.book_append_sheet(wb, ws, "Edad Inventario");
+      XLSX.utils.book_append_sheet(wb, ws, "Antigüedad Inventario");
+
+      // Estadísticas por rango de antigüedad
+      const rangos = [
+        "0-3 meses",
+        "3-6 meses",
+        "6-12 meses",
+        "> 12 meses",
+        "Sin fecha de entrada",
+      ] as const;
+
+      type RangoAntiguedad = typeof rangos[number] | "TOTAL";
+
+      const iconos: Record<RangoAntiguedad, string> = {
+        "0-3 meses": "🟢 0-3 meses",
+        "3-6 meses": "🟡 3-6 meses",
+        "6-12 meses": "🟠 6-12 meses",
+        "> 12 meses": "🔴 >12 meses",
+        "Sin fecha de entrada": "⚪ Sin fecha",
+        TOTAL: "🔷 TOTAL",
+      };
+      const resumen = rangos.map((rango) => {
+        const items = inventoryAgeResults.filter((i: any) => i.rangoEdad === rango);
+        const skus = new Set(items.map((i: any) => i.sku));
+        const unidades = items.reduce((sum: number, i: any) => sum + (i.disponible ?? 0), 0);
+        // Calcular promedio de días en inventario (solo donde haya valor)
+        const dias = items
+          .map((i: any) => typeof i.diasEnInventario === "number" && !isNaN(i.diasEnInventario) ? i.diasEnInventario : null)
+          .filter((v: number | null) => v !== null) as number[];
+        const promedioDias = dias.length > 0 ? (dias.reduce((a, b) => a + b, 0) / dias.length) : null;
+        return {
+          "Rango de Antigüedad": iconos[rango] || rango,
+          "SKUs": skus.size,
+          "Unidades": unidades,
+          "Registros": items.length,
+          "Promedio Días": promedioDias !== null ? Math.round(promedioDias * 10) / 10 : "-",
+        };
+      });
+      // Totales generales
+      const totalSkus = new Set(inventoryAgeResults.map((i: any) => i.sku)).size;
+      const totalUnidades = inventoryAgeResults.reduce((sum: number, i: any) => sum + (i.disponible ?? 0), 0);
+      const totalRegistros = inventoryAgeResults.length;
+      const diasTotales = inventoryAgeResults
+        .map((i: any) => typeof i.diasEnInventario === "number" && !isNaN(i.diasEnInventario) ? i.diasEnInventario : null)
+        .filter((v: number | null) => v !== null) as number[];
+      const promedioDiasTotal = diasTotales.length > 0 ? (diasTotales.reduce((a, b) => a + b, 0) / diasTotales.length) : null;
+      resumen.push({
+        "Rango de Antigüedad": iconos["TOTAL"],
+        "SKUs": totalSkus,
+        "Unidades": totalUnidades,
+        "Registros": totalRegistros,
+        "Promedio Días": promedioDiasTotal !== null ? Math.round(promedioDiasTotal * 10) / 10 : "-",
+      });
+
+      const wsResumen = XLSX.utils.json_to_sheet(resumen);
+      wsResumen["!cols"] = [
+        { wch: 20 },
+        { wch: 10 },
+        { wch: 12 },
+        { wch: 12 },
+        { wch: 16 },
+      ];
+      XLSX.utils.book_append_sheet(wb, wsResumen, "📊 Resumen Antigüedad");
     }
 
-    // REPORTE CRUCE
     else if (analysisMode === "cross" && crossResults?.length) {
       const sortedCrossResults = [...crossResults].sort(
         (a, b) => b.diferencia - a.diferencia,
@@ -611,13 +660,6 @@ export async function generateFullReportFile(
 
       XLSX.utils.book_append_sheet(wb, ws, "📊 Cruce SAP vs WMS");
 
-      // ========================================================================
-      // HOJA DE RESUMEN DE VALORES - ANÁLISIS COMPLETO POR SKU Y POR LOTE
-      // ========================================================================
-
-      // ------------------------------------------------------------------------
-      // 1. ANÁLISIS POR SKU (PRODUCTO)
-      // ------------------------------------------------------------------------
       const totalSap = crossResults.reduce(
         (sum, item: any) => sum + (item.cantidadSap || 0),
         0,
@@ -645,11 +687,6 @@ export async function generateFullReportFile(
         (item: any) => item.diferencia === 0,
       ).length;
 
-      // ------------------------------------------------------------------------
-      // 2. ANÁLISIS POR LOTE - CON DETECCIÓN DE LOTES MIXTOS
-      // ------------------------------------------------------------------------
-
-      // Agrupar por lote para análisis a nivel de lote
       const lotesMap = new Map();
 
       crossResults.forEach((item: any) => {
@@ -665,8 +702,8 @@ export async function generateFullReportFile(
             itemsSobrantes: 0,
             itemsFaltantes: 0,
             itemsOK: 0,
-            skusSobrantes: [], // Para debug/ análisis detallado
-            skusFaltantes: [], // Para debug/ análisis detallado
+            skusSobrantes: [],
+            skusFaltantes: [],
           });
         }
 
@@ -674,7 +711,6 @@ export async function generateFullReportFile(
         loteInfo.cantidadItems++;
         loteInfo.totalDiferencia += item.diferencia || 0;
 
-        // Clasificar el estado de este item
         if (item.diferencia > 0) {
           loteInfo.tieneSobrante = true;
           loteInfo.tieneOK = false;
@@ -698,13 +734,10 @@ export async function generateFullReportFile(
 
       const lotesArray = Array.from(lotesMap.values());
 
-      // Clasificar lotes según su estado general
       let lotesSoloSobrantes = 0;
       let lotesSoloFaltantes = 0;
-      let lotesMixtos = 0; // Tienen tanto sobrante como faltante
+      let lotesMixtos = 0;
       let lotesOK = 0;
-
-      // Array para almacenar detalles de lotes mixtos (para posible hoja adicional)
       const lotesMixtosDetalle: any[] = [];
 
       lotesArray.forEach((lote) => {
@@ -727,114 +760,38 @@ export async function generateFullReportFile(
       });
 
       const totalLotes = lotesArray.length;
-      const lotesConNovedad =
-        lotesSoloSobrantes + lotesSoloFaltantes + lotesMixtos;
+      const lotesConNovedad = lotesSoloSobrantes + lotesSoloFaltantes + lotesMixtos;
 
-      // ------------------------------------------------------------------------
-      // CONSTRUCCIÓN DE LA HOJA DE RESUMEN
-      // ------------------------------------------------------------------------
       const resumenData = [
-        // ========== SECCIÓN 1: STOCK TOTAL ==========
         { Concepto: "🏭 STOCK TOTAL", Valor: "", Unidad: "" },
         { Concepto: "  • Stock SAP", Valor: totalSap, Unidad: "Unidades" },
         { Concepto: "  • Stock WMS", Valor: totalWms, Unidad: "Unidades" },
-        {
-          Concepto: "  • Diferencia Total",
-          Valor: totalSap - totalWms,
-          Unidad: "Unidades",
-        },
+        { Concepto: "  • Diferencia Total", Valor: totalSap - totalWms, Unidad: "Unidades" },
         { Concepto: "", Valor: "", Unidad: "" },
-
-        // ========== SECCIÓN 2: DIFERENCIAS EN UNIDADES ==========
         { Concepto: "💰 DIFERENCIAS EN UNIDADES", Valor: "", Unidad: "" },
-        {
-          Concepto: "  • Total Sobrante",
-          Valor: totalSobranteUnidades,
-          Unidad: "Unidades",
-        },
-        {
-          Concepto: "  • Total Faltante",
-          Valor: totalFaltanteUnidades,
-          Unidad: "Unidades",
-        },
-        {
-          Concepto: "  • Diferencia Neta",
-          Valor: totalSobranteUnidades - totalFaltanteUnidades,
-          Unidad: "Unidades",
-        },
+        { Concepto: "  • Total Sobrante", Valor: totalSobranteUnidades, Unidad: "Unidades" },
+        { Concepto: "  • Total Faltante", Valor: totalFaltanteUnidades, Unidad: "Unidades" },
+        { Concepto: "  • Diferencia Neta", Valor: totalSobranteUnidades - totalFaltanteUnidades, Unidad: "Unidades" },
         { Concepto: "", Valor: "", Unidad: "" },
-
-        // ========== SECCIÓN 3: ANÁLISIS POR SKU (PRODUCTO) ==========
         { Concepto: "📦 ANÁLISIS POR SKU", Valor: "", Unidad: "" },
-        {
-          Concepto: "  • SKUs con Sobrante",
-          Valor: totalSKUsSobrantes,
-          Unidad: "SKUs",
-        },
-        {
-          Concepto: "  • SKUs con Faltante",
-          Valor: totalSKUsFaltantes,
-          Unidad: "SKUs",
-        },
+        { Concepto: "  • SKUs con Sobrante", Valor: totalSKUsSobrantes, Unidad: "SKUs" },
+        { Concepto: "  • SKUs con Faltante", Valor: totalSKUsFaltantes, Unidad: "SKUs" },
         { Concepto: "  • SKUs OK", Valor: totalSKUsOK, Unidad: "SKUs" },
-        {
-          Concepto: "  • TOTAL SKUs",
-          Valor: crossResults.length,
-          Unidad: "SKUs",
-        },
+        { Concepto: "  • TOTAL SKUs", Valor: crossResults.length, Unidad: "SKUs" },
         { Concepto: "", Valor: "", Unidad: "" },
-
-        // ========== SECCIÓN 4: ANÁLISIS POR LOTE ==========
         { Concepto: "📋 ANÁLISIS POR LOTE", Valor: "", Unidad: "" },
-        {
-          Concepto: "  • Lotes solo con Sobrante",
-          Valor: lotesSoloSobrantes,
-          Unidad: "Lotes",
-        },
-        {
-          Concepto: "  • Lotes solo con Faltante",
-          Valor: lotesSoloFaltantes,
-          Unidad: "Lotes",
-        },
-        {
-          Concepto: "  • Lotes Mixtos (Sobrante + Faltante)",
-          Valor: lotesMixtos,
-          Unidad: "Lotes",
-        },
-        {
-          Concepto: "  • TOTAL LOTES CON NOVEDAD",
-          Valor: lotesConNovedad,
-          Unidad: "Lotes",
-        },
-        {
-          Concepto: "  • Lotes OK",
-          Valor: lotesOK,
-          Unidad: "Lotes",
-        },
-        {
-          Concepto: "  • TOTAL LOTES ANALIZADOS",
-          Valor: totalLotes,
-          Unidad: "Lotes",
-        },
+        { Concepto: "  • Lotes solo con Sobrante", Valor: lotesSoloSobrantes, Unidad: "Lotes" },
+        { Concepto: "  • Lotes solo con Faltante", Valor: lotesSoloFaltantes, Unidad: "Lotes" },
+        { Concepto: "  • Lotes Mixtos (Sobrante + Faltante)", Valor: lotesMixtos, Unidad: "Lotes" },
+        { Concepto: "  • TOTAL LOTES CON NOVEDAD", Valor: lotesConNovedad, Unidad: "Lotes" },
+        { Concepto: "  • Lotes OK", Valor: lotesOK, Unidad: "Lotes" },
+        { Concepto: "  • TOTAL LOTES ANALIZADOS", Valor: totalLotes, Unidad: "Lotes" },
       ];
 
       const wsResumen = XLSX.utils.json_to_sheet(resumenData);
-
-      // Aplicar estilos con formato condicional
-      aplicarEstilosModernos(wsResumen);
-
-      // Ajustar ancho de columnas específicamente para mejor visualización
-      wsResumen["!cols"] = [
-        { wch: 45 }, // Columna Concepto
-        { wch: 20 }, // Columna Valor
-        { wch: 15 }, // Columna Unidad
-      ];
-
+      wsResumen["!cols"] = [{ wch: 45 }, { wch: 20 }, { wch: 15 }];
       XLSX.utils.book_append_sheet(wb, wsResumen, "📈 Resumen de Valores");
 
-      // ========================================================================
-      // HOJA ADICIONAL: DETALLE DE LOTES MIXTOS (OPCIONAL PERO MUY ÚTIL)
-      // ========================================================================
       if (lotesMixtosDetalle.length > 0) {
         const wsLotesMixtos = XLSX.utils.json_to_sheet(lotesMixtosDetalle);
         aplicarEstilosModernos(wsLotesMixtos, {
@@ -844,23 +801,14 @@ export async function generateFullReportFile(
       }
     }
 
-    // REPORTE CRUCE DE LOTES
     else if (analysisMode === "lotCross" && lotCrossResults?.length) {
       const sheetData = lotCrossResults.map((item: any) => ({
         SKU: item.sku,
         Descripción: item.descripcion || "",
-        "Lotes SAP": Array.isArray(item.lotesSap)
-          ? item.lotesSap.join(", ")
-          : "",
-        "Lotes WMS": Array.isArray(item.lotesWms)
-          ? item.lotesWms.join(", ")
-          : "",
-        "Solo en SAP": Array.isArray(item.lotesSoloSap)
-          ? item.lotesSoloSap.join(", ")
-          : "",
-        "Solo en WMS": Array.isArray(item.lotesSoloWms)
-          ? item.lotesSoloWms.join(", ")
-          : "",
+        "Lotes SAP": Array.isArray(item.lotesSap) ? item.lotesSap.join(", ") : "",
+        "Lotes WMS": Array.isArray(item.lotesWms) ? item.lotesWms.join(", ") : "",
+        "Solo en SAP": Array.isArray(item.lotesSoloSap) ? item.lotesSoloSap.join(", ") : "",
+        "Solo en WMS": Array.isArray(item.lotesSoloWms) ? item.lotesSoloWms.join(", ") : "",
         "Cant. SAP": item.cantidadSap || 0,
         "Cant. WMS": item.cantidadWms || 0,
         Estado: item.estado === "OK" ? "✅ OK" : "❌ DIFERENTE",
@@ -872,30 +820,14 @@ export async function generateFullReportFile(
       });
       XLSX.utils.book_append_sheet(wb, ws, "📊 Cruce Lotes SAP vs WMS");
 
-      // ========================================================================
-      // HOJA DE RESUMEN - CRUCE DE LOTES
-      // ========================================================================
       const totalSku = lotCrossResults.length;
-      const totalOK = lotCrossResults.filter(
-        (item: any) => item.estado === "OK",
-      ).length;
-      const totalDiferente = lotCrossResults.filter(
-        (item: any) => item.estado === "DIFERENTE",
-      ).length;
+      const totalOK = lotCrossResults.filter((item: any) => item.estado === "OK").length;
+      const totalDiferente = lotCrossResults.filter((item: any) => item.estado === "DIFERENTE").length;
 
-      const totalCantidadSap = lotCrossResults.reduce(
-        (sum, item: any) => sum + (item.cantidadSap || 0),
-        0,
-      );
-      const totalCantidadWms = lotCrossResults.reduce(
-        (sum, item: any) => sum + (item.cantidadWms || 0),
-        0,
-      );
-      const totalDiferenciaCantidad = Math.abs(
-        totalCantidadSap - totalCantidadWms,
-      );
+      const totalCantidadSap = lotCrossResults.reduce((sum, item: any) => sum + (item.cantidadSap || 0), 0);
+      const totalCantidadWms = lotCrossResults.reduce((sum, item: any) => sum + (item.cantidadWms || 0), 0);
+      const totalDiferenciaCantidad = Math.abs(totalCantidadSap - totalCantidadWms);
 
-      // Contar lotes únicos
       const lotesSet = new Set<string>();
       const lotesSapSet = new Set<string>();
       const lotesWmsSet = new Set<string>();
@@ -915,70 +847,25 @@ export async function generateFullReportFile(
         }
       });
 
-      const lotesSoloSap = Array.from(lotesSapSet).filter(
-        (l) => !lotesWmsSet.has(l),
-      ).length;
-      const lotesSoloWms = Array.from(lotesWmsSet).filter(
-        (l) => !lotesSapSet.has(l),
-      ).length;
+      const lotesSoloSap = Array.from(lotesSapSet).filter((l) => !lotesWmsSet.has(l)).length;
+      const lotesSoloWms = Array.from(lotesWmsSet).filter((l) => !lotesSapSet.has(l)).length;
 
       const resumenLotesData = [
-        // ========== SECCIÓN 1: SKUs CONCILIADOS ==========
         { Concepto: "📦 SKUs ANALIZADOS", Valor: "", Unidad: "" },
-        {
-          Concepto: "  • SKUs ✅ OK (lotes conciliados)",
-          Valor: totalOK,
-          Unidad: "SKUs",
-        },
-        {
-          Concepto: "  • SKUs ❌ DIFERENTE (lotes discrepancia)",
-          Valor: totalDiferente,
-          Unidad: "SKUs",
-        },
+        { Concepto: "  • SKUs ✅ OK (lotes conciliados)", Valor: totalOK, Unidad: "SKUs" },
+        { Concepto: "  • SKUs ❌ DIFERENTE (lotes discrepancia)", Valor: totalDiferente, Unidad: "SKUs" },
         { Concepto: "  • TOTAL SKUs", Valor: totalSku, Unidad: "SKUs" },
         { Concepto: "", Valor: "", Unidad: "" },
-
-        // ========== SECCIÓN 2: CANTIDADES ==========
         { Concepto: "🏭 CANTIDADES", Valor: "", Unidad: "" },
-        {
-          Concepto: "  • Cantidad Total SAP",
-          Valor: totalCantidadSap,
-          Unidad: "Unidades",
-        },
-        {
-          Concepto: "  • Cantidad Total WMS",
-          Valor: totalCantidadWms,
-          Unidad: "Unidades",
-        },
-        {
-          Concepto: "  • Diferencia de Cantidades",
-          Valor: totalDiferenciaCantidad,
-          Unidad: "Unidades",
-        },
+        { Concepto: "  • Cantidad Total SAP", Valor: totalCantidadSap, Unidad: "Unidades" },
+        { Concepto: "  • Cantidad Total WMS", Valor: totalCantidadWms, Unidad: "Unidades" },
+        { Concepto: "  • Diferencia de Cantidades", Valor: totalDiferenciaCantidad, Unidad: "Unidades" },
         { Concepto: "", Valor: "", Unidad: "" },
-
-        // ========== SECCIÓN 3: ANÁLISIS DE LOTES ==========
         { Concepto: "📋 ANÁLISIS DE LOTES", Valor: "", Unidad: "" },
-        {
-          Concepto: "  • Total Lotes Únicos",
-          Valor: lotesSet.size,
-          Unidad: "Lotes",
-        },
-        {
-          Concepto: "  • Lotes SOLO en SAP",
-          Valor: lotesSoloSap,
-          Unidad: "Lotes",
-        },
-        {
-          Concepto: "  • Lotes SOLO en WMS",
-          Valor: lotesSoloWms,
-          Unidad: "Lotes",
-        },
-        {
-          Concepto: "  • Lotes Conciliados (en ambos)",
-          Valor: lotesSet.size - lotesSoloSap - lotesSoloWms,
-          Unidad: "Lotes",
-        },
+        { Concepto: "  • Total Lotes Únicos", Valor: lotesSet.size, Unidad: "Lotes" },
+        { Concepto: "  • Lotes SOLO en SAP", Valor: lotesSoloSap, Unidad: "Lotes" },
+        { Concepto: "  • Lotes SOLO en WMS", Valor: lotesSoloWms, Unidad: "Lotes" },
+        { Concepto: "  • Lotes Conciliados (en ambos)", Valor: lotesSet.size - lotesSoloSap - lotesSoloWms, Unidad: "Lotes" },
       ];
 
       const wsResumenLotes = XLSX.utils.json_to_sheet(resumenLotesData);
@@ -987,7 +874,6 @@ export async function generateFullReportFile(
       XLSX.utils.book_append_sheet(wb, wsResumenLotes, "📈 Resumen de Lotes");
     }
 
-    // REPORTE SUGERENCIAS
     else if (suggestions?.length) {
       const sortedSuggestions = [...suggestions].sort(
         (a, b) => b.cantidadARestockear - a.cantidadARestockear,
@@ -1000,9 +886,7 @@ export async function generateFullReportFile(
             const cantASurtir = s.cantidadARestockear > 0 ? u.cantidad : 0;
             const row: any = {
               SKU: s.sku,
-              Descripción:
-                s.descripcion?.substring(0, 83) +
-                (s.descripcion?.length > 83 ? "..." : ""),
+              Descripción: s.descripcion?.substring(0, 83) + (s.descripcion?.length > 83 ? "..." : ""),
               ...(analysisMode === "levels" && {
                 "Ubicación Destino": s.localizacionDestino || "",
                 "LPN Destino": s.lpnDestino || "",
@@ -1015,21 +899,12 @@ export async function generateFullReportFile(
                 "Stock Actual": s.cantidadDisponible || 0,
               }),
               "Cant. a Surtir": cantASurtir,
-              // Origen: `${u.localizacion}${u.lpn ? ` (${u.lpn})` : ""}`,
               "Ubicación Origen": u.localizacion || "",
               "LPN Origen": u.lpn || "",
-              Tipo:
-                cantASurtir > 0
-                  ? u.esEstibaCompleta
-                    ? "✅ Pallet Completo"
-                    : "🔄 Unidades Parciales"
-                  : "⏹️ OK",
+              Tipo: cantASurtir > 0 ? (u.esEstibaCompleta ? "✅ Pallet Completo" : "🔄 Unidades Parciales") : "⏹️ OK",
               Estiba: u.esEstibaCompleta ? "📦 SI" : "📦 NO",
               ...(analysisMode === "sales" && {
-                Cubierto:
-                  index === 0
-                    ? s.cantidadTotalCubierta || s.cantidadARestockear || 0
-                    : 0,
+                Cubierto: index === 0 ? s.cantidadTotalCubierta || s.cantidadARestockear || 0 : 0,
                 Faltante: index === 0 ? s.cantidadFaltante || 0 : 0,
               }),
             };
@@ -1063,44 +938,26 @@ export async function generateFullReportFile(
         }
       });
 
-      const totalCantidadSurtir = sheetData.reduce(
-        (sum, row) => sum + (row["Cant. a Surtir"] || 0),
-        0,
-      );
+      const totalCantidadSurtir = sheetData.reduce((sum, row) => sum + (row["Cant. a Surtir"] || 0), 0);
 
       if (analysisMode === "sales") {
         sheetData.push({
           SKU: "🔸 RESUMEN",
           Descripción: "TOTALES GENERALES",
-          Vendido: sheetData.reduce(
-            (sum, row) => sum + (row["Vendido"] || 0),
-            0,
-          ),
-          "Stock Picking": sheetData.reduce(
-            (sum, row) => sum + (row["Stock Picking"] || 0),
-            0,
-          ),
+          Vendido: sheetData.reduce((sum, row) => sum + (row["Vendido"] || 0), 0),
+          "Stock Picking": sheetData.reduce((sum, row) => sum + (row["Stock Picking"] || 0), 0),
           "Cant. a Surtir": totalCantidadSurtir,
           Origen: "",
           Tipo: "",
           Estiba: "",
-          Cubierto: sheetData.reduce(
-            (sum, row) => sum + (row["Cubierto"] || 0),
-            0,
-          ),
-          Faltante: sheetData.reduce(
-            (sum, row) => sum + (row["Faltante"] || 0),
-            0,
-          ),
+          Cubierto: sheetData.reduce((sum, row) => sum + (row["Cubierto"] || 0), 0),
+          Faltante: sheetData.reduce((sum, row) => sum + (row["Faltante"] || 0), 0),
         });
       } else {
         sheetData.push({
           SKU: "🔸 RESUMEN",
           Descripción: "TOTALES GENERALES",
-          "Stock Actual": sheetData.reduce(
-            (sum, row) => sum + (row["Stock Actual"] || 0),
-            0,
-          ),
+          "Stock Actual": sheetData.reduce((sum, row) => sum + (row["Stock Actual"] || 0), 0),
           "Cant. a Surtir": totalCantidadSurtir,
           Origen: "",
           Tipo: "",
@@ -1117,7 +974,6 @@ export async function generateFullReportFile(
       XLSX.utils.book_append_sheet(wb, ws, "📋 Sugerencias de Surtido");
     }
 
-    // REPORTE FALTANTES
     if (missingProducts?.length) {
       const categorias = [
         { tipo: "SIN_INVENTARIO", nombre: "❌ Sin Inventario" },
@@ -1137,18 +993,11 @@ export async function generateFullReportFile(
           "Stock Reserva": item.stockEnReserva || 0,
           Cubierto: item.cantidadCubierta || 0,
           Faltante: item.cantidadFaltante || item.cantidadVendida || 0,
-          Estado:
-            tipo === "SIN_INVENTARIO"
-              ? "Sin Stock"
-              : tipo === "SIN_RESERVA"
-                ? "Sin Reserva"
-                : "Reserva Insuficiente",
+          Estado: tipo === "SIN_INVENTARIO" ? "Sin Stock" : tipo === "SIN_RESERVA" ? "Sin Reserva" : "Reserva Insuficiente",
         }));
 
         const totalFaltante = data.reduce((sum, row) => sum + row.Faltante, 0);
-        const dataConTotales = agregarFilaTotales(data, {
-          Faltante: totalFaltante,
-        });
+        const dataConTotales = agregarFilaTotales(data, { Faltante: totalFaltante });
         const ws = XLSX.utils.json_to_sheet(dataConTotales);
 
         aplicarEstilosModernos(ws, {
@@ -1169,6 +1018,8 @@ export async function generateFullReportFile(
       filename = `Cruce_Inventarios_${timestamp}.xlsx`;
     } else if (analysisMode === "shelfLife") {
       filename = `Reporte_VidaUtil_${timestamp}.xlsx`;
+    } else if (analysisMode === "inventoryAge") {
+      filename = `Antigüedad_del_Inventario_${timestamp}.xlsx`;
     } else {
       filename = `Reporte_Surtido_${timestamp}.xlsx`;
     }
@@ -1187,6 +1038,206 @@ export async function generateFullReportFile(
     console.error("Error generando reporte:", e);
     return {
       error: `❌ Error al generar el archivo: ${e instanceof Error ? e.message : "Error inesperado"}`,
+    };
+  }
+}
+
+/**
+ * Ejecuta el análisis de Surtido Inteligente y genera el Excel con columnas destino siempre presentes.
+ * Recibe ventas, stock y maestra, valida y ejecuta el análisis, y retorna el archivo Excel listo para descargar.
+ */
+export async function runSurtidoInteligenteExcel(
+  ventas: any[],
+  stock: any[],
+  maestra?: any[],
+): Promise<{ file?: string; filename?: string; error?: string }> {
+  try {
+    // Validar datos con los schemas
+    const ventasValidadas = SurtidoInteligenteSalesSchema.parse(ventas);
+    const stockValidados = SurtidoInteligenteStockSchema.parse(stock);
+    let maestraValida = undefined;
+    if (maestra && maestra.length > 0) {
+      maestraValida = MaterialMaestraSchema.parse(maestra);
+    }
+
+    // Ejecutar el análisis usando el flow estructurado
+    const result = await runSmartAssortmentAnalysis({
+      ventas: ventasValidadas,
+      stock: stockValidados,
+      maestra: maestraValida,
+    });
+
+    // Generar el Excel con las sugerencias
+    const wb = XLSX.utils.book_new();
+    const sheetData: any[] = [];
+    result.suggestions.forEach((s: any) => {
+      // Determinar si es producto de alto valor en ventas y se envía a surtir de más
+      const esAltoValor = s.prioridadAlta === true && s.cantidadARestockear > 0;
+      const tagAltoValor = esAltoValor ? "🔥 Alto valor, surtido extra" : "";
+      if (s.ubicacionesSugeridas?.length) {
+        s.ubicacionesSugeridas.forEach((u: any, index: number) => {
+          const cantASurtir = s.cantidadARestockear > 0 ? u.cantidad : 0;
+          sheetData.push({
+            SKU: s.sku,
+            Descripción: s.descripcion?.substring(0, 83) + (s.descripcion?.length > 83 ? "..." : ""),
+            "Ubicación Destino": s.localizacionDestino || "",
+            "LPN Destino": s.lpnDestino || "",
+            Vendida: s.cantidadVendida || "",
+            "Stock Picking": s.cantidadDisponible || "",
+            "Cant. a Surtir": cantASurtir,
+            "Ubicación Origen": u.localizacion || "",
+            "LPN Origen": u.lpn || "",
+            Lote: u.lote || "",
+            "Fecha Vencimiento": u.fechaVencimiento || "",
+            Tipo: cantASurtir > 0 ? (u.esEstibaCompleta ? "✅ Pallet Completo" : "🔄 Unidades Parciales") : "⏹️ OK",
+            Estiba: u.esEstibaCompleta ? "📦 SI" : "📦 NO",
+            "Alerta Surtido": tagAltoValor,
+          });
+        });
+      } else {
+        sheetData.push({
+          SKU: s.sku,
+          Descripción: s.descripcion?.substring(0, 83),
+          "Ubicación Destino": s.localizacionDestino || "",
+          "LPN Destino": s.lpnDestino || "",
+          Vendida: s.cantidadVendida || "",
+          "Stock Picking": s.cantidadDisponible || "",
+          "Cant. a Surtir": s.cantidadARestockear || 0,
+          "Ubicación Origen": "",
+          "LPN Origen": "",
+          Lote: "",
+          "Fecha Vencimiento": "",
+          Tipo: s.cantidadARestockear > 0 ? "❌ No disponible" : "⏹️ OK",
+          Estiba: "N/A",
+          "Alerta Surtido": tagAltoValor,
+        });
+      }
+    });
+
+    // Fila de totales
+    const totalCantidadSurtir = sheetData.reduce((sum, row) => sum + (row["Cant. a Surtir"] || 0), 0);
+    sheetData.push({
+      SKU: "🔸 RESUMEN",
+      Descripción: "TOTALES GENERALES",
+      "Ubicación Destino": "",
+      "LPN Destino": "",
+      Vendida: sheetData.reduce((sum, row) => sum + (row["Vendida"] || 0), 0),
+      "Stock Picking": sheetData.reduce((sum, row) => sum + (row["Stock Picking"] || 0), 0),
+      "Cant. a Surtir": totalCantidadSurtir,
+      "Ubicación Origen": "",
+      "LPN Origen": "",
+      Tipo: "",
+      Estiba: "",
+    });
+
+    const ws = XLSX.utils.json_to_sheet(sheetData);
+    aplicarEstilosModernos(ws, {
+      filaTotales: sheetData.length - 1,
+      columnaEstado: Object.keys(sheetData[0]).indexOf("Tipo"),
+    });
+    XLSX.utils.book_append_sheet(wb, ws, "Surtido Inteligente");
+
+    const fileBase64 = XLSX.write(wb, {
+      type: "base64",
+      bookType: "xls",
+    });
+
+    return {
+      file: fileBase64,
+      filename: `Surtido_Inteligente_${new Date().toISOString().slice(0, 10)}.xls`,
+    };
+  } catch (e: any) {
+    return {
+      error: `❌ Error en análisis o generación de Excel: ${e instanceof Error ? e.message : String(e)}`,
+    };
+  }
+}
+/**
+ * Ejecuta el análisis de Surtido Inteligente usando el flow estructurado
+ * Similar a generateLevelsAnalysis pero para el módulo de surtido por ventas
+ */
+export async function runSurtidoInteligenteAnalysis(
+  ventas: any[],
+  stock: any[],
+  maestra?: any[]
+): Promise<{ data?: AnalysisResult; error?: string }> {
+  try {
+    // console.log("🚀 Iniciando runSurtidoInteligenteAnalysis (nueva versión)...");
+    // console.log(`📊 Ventas: ${ventas?.length || 0}`);
+    // console.log(`📦 Stock: ${stock?.length || 0}`);
+    // console.log(`📋 Maestra: ${maestra?.length || 0}`);
+
+    // Validar datos con los schemas
+    const ventasValidadas = SurtidoInteligenteSalesSchema.parse(ventas);
+    const stockValidados = SurtidoInteligenteStockSchema.parse(stock);
+    
+    let maestraValida = undefined;
+    if (maestra && maestra.length > 0) {
+      maestraValida = MaterialMaestraSchema.parse(maestra);
+      console.log("✅ Maestra validada correctamente");
+    }
+
+    // Ejecutar el análisis usando el flow estructurado
+    const result = await runSmartAssortmentAnalysis({
+      ventas: ventasValidadas,
+      stock: stockValidados,
+      maestra: maestraValida,
+    });
+
+    console.log(`✅ Análisis completado. Sugerencias: ${result.suggestions.length}`);
+    console.log(`✅ Productos faltantes: ${result.missingProducts.length}`);
+    
+    return { data: result };
+  } catch (e) {
+    console.error("❌ Error en Surtido Inteligente:", e);
+    return {
+      error: `❌ Error en análisis de Surtido Inteligente: ${e instanceof Error ? e.message : String(e)}`,
+    };
+  }
+}
+
+/**
+ * Genera el Excel de validación de pasillo P10 para exportación de inventario.
+ * Valida los datos, genera el archivo y retorna mensajes de éxito/error.
+ */
+export async function generateExportInventoryExcel(
+  maestra: any[],
+  inventario: any[]
+): Promise<{ file?: string; filename?: string; error?: string; message?: string }> {
+  try {
+    const maestraValida = MaestraExportacionSchema.parse(maestra);
+    const inventarioValido = InventarioExportacionSchema.parse(inventario);
+    
+    // Obtener los resultados validados
+    const { resultados } = await generarExportacionPasilloP10Excel(maestraValida, inventarioValido);
+    
+    // Generar el Excel AQUÍ en actions
+    const sheetData = resultados.map((r) => ({
+      "Código": r.codigo,
+      "Referencia": r.referencia,
+      "Ubicación actual": r.localizacionActual || '-',
+      "Estado": r.estado === 'OK' ? 'En pasillo objetivo' : 
+                 r.estado === 'MOVIMIENTO AL PASILLO SUGERIDO' ? 'Mover a pasillo sugerido' : 
+                 'No encontrado',
+      "Pasillo sugerido": r.localizacionSugerida || '-',
+      "Sugerencia": r.estado === 'OK' ? 'No requiere movimiento' :
+                    r.estado === 'MOVIMIENTO AL PASILLO SUGERIDO' ? `Mover a ${r.localizacionSugerida}` :
+                    'No hay stock en inventario',
+    }));
+    
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(sheetData);
+    XLSX.utils.book_append_sheet(wb, ws, `Validación ${analysisConfig.EXPORT_INVENTORY_TARGET_AISLE}`);
+    const file = XLSX.write(wb, { type: "base64", bookType: "xlsx", compression: true });
+    
+    return {
+      file,
+      filename: `Validacion_Pasillo_${analysisConfig.EXPORT_INVENTORY_TARGET_AISLE}_${new Date().toISOString().slice(0, 10)}.xlsx`,
+      message: `✅ Archivo de validación generado correctamente. Total códigos: ${maestraValida.length}`,
+    };
+  } catch (e: any) {
+    return {
+      error: `❌ Error en validación o generación de Excel: ${e instanceof Error ? e.message : String(e)}`,
     };
   }
 }

@@ -11,7 +11,7 @@ export const analysisConfig = {
    * convertidos a mayúsculas para comparación sin distinción entre mayúsculas y minúsculas.
    * @example ["DISPONIBLE", "EN STOCK", "LIBRE UTILIZACION"]
    */
-  VALID_STATUSES: ["STOCK EN ALMACEN LIBRE", "DISPONIBLE"],
+  VALID_STATUSES: ["STOCK EN ALMACEN LIBRE", "DISPONIBLE", "13 - CCL  DISPONIBLE"],
 
   /**
    * Lista de ubicaciones específicas de almacén que deben ignorarse completamente en el análisis.
@@ -27,17 +27,32 @@ export const analysisConfig = {
    */
   IGNORED_LOCATIONS_MUELLE: ["MUELLE DE SALIDA", "MUELLE ENTRADA"],
 
+  /**
+   * Palabras clave de ubicaciones que deben ser omitidas en todos los análisis (ej: muelle, PTF, etc)
+   */
+  IGNORED_LOCATION_KEYWORDS: ["MUELLE", "PTF", "PDIF-INV-1-10", "DEV-1-10"],
+
    /**
    * Última parte de un código de ubicación que lo identifica como ubicación de picking.
    * Ejemplo: Para una ubicación "P1-A-1-5", "5" es la última parte.
    */
   PICKING_LEVELS: ['5', '10', '15'],
+  
+  /**
+   * Prefijos de ubicación que identifican zonas de picking (destino)
+   */
+  PICKING_PREFIXES: ['P30', 'P40'],
+  
+  PICKING_EXPORT: ["P30", "P40", "P50", "P11", "P12", "P13", "P14", "P15", "P5", "P6", "P7", "P8", "P9"],
+
 
   /**
    * Última parte de un código de ubicación que lo identifica como ubicación de reserva.
    * Ejemplo: Para una ubicación "P2-B-3-20", "20" es la última parte.
    */
   RESERVE_LEVELS: ['20', '30', '40', '50', '60', '70'],
+  
+  EXPORT_INVENTORY_TARGET_AISLE: "P10",
 
   /**
    * Lista de prefijos de ubicación (o nombres completos) que se considerarán como ubicaciones de stock de reserva.

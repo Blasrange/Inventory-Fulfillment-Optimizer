@@ -1,3 +1,5 @@
+import { EventEmitter } from "events";
+EventEmitter.defaultMaxListeners = 20;
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
@@ -32,10 +34,16 @@ const nextConfig: NextConfig = {
   },
   experimental: {
     serverActions: {
-      // Aumenta el límite a 10MB (ajusta según necesites)
-      bodySizeLimit: "10mb",
+      // Aumenta el límite a 100MB para archivos grandes
+      bodySizeLimit: "100mb",
     },
+    // Optimizaciones para archivos grandes
+    largePageDataBytes: 512 * 1000, // 512KB
   },
+  // Aumentar timeout para operaciones largas
+  staticPageGenerationTimeout: 180,
+  // Compresión para respuestas grandes
+  compress: true,
 };
 
 export default nextConfig;

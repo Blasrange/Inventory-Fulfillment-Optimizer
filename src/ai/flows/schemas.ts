@@ -1,3 +1,6 @@
+// ──────────────────────────────────────────────────────────────
+// Surtido Inteligente: Schemas de ventas y stock
+// ──────────────────────────────────────────────────────────────
 import { z } from "genkit";
 
 /**
@@ -13,6 +16,18 @@ const COERCE_STRING_OPTIONAL = z.preprocess((val) => {
   if (val === null || val === undefined) return "";
   return String(val);
 }, z.string().optional());
+
+const COERCE_NUMBER = z.preprocess((val) => {
+  if (val === null || val === undefined || val === "") return 0;
+  const num = Number(val);
+  return isNaN(num) ? 0 : num;
+}, z.number());
+
+const COERCE_NUMBER_OPTIONAL = z.preprocess((val) => {
+  if (val === null || val === undefined || val === "") return undefined;
+  const num = Number(val);
+  return isNaN(num) ? undefined : num;
+}, z.number().optional());
 
 export const SalesDataSchema = z.array(
   z.object({
@@ -66,6 +81,7 @@ export const UbicacionSugeridaSchema = z.object({
     .optional()
     .describe("The License Plate Number (LPN) for the stock at this location."),
   localizacion: z.string().describe("El código de la ubicación."),
+  lote: z.string().optional().describe("Lote del producto en esta ubicación."),
   diasFPC: z
     .number()
     .optional()
@@ -310,6 +326,120 @@ export const ParseExitoExcelResultSchema = z.object({
   warnings: z.array(z.string()),
 });
 
+export const SurtidoInteligenteSalesSchema = z.array(
+  z.object({
+    oboId: COERCE_STRING,
+    oboOrder: COERCE_STRING,
+    oboOrder2: COERCE_STRING.optional(),
+    oboInvoice: COERCE_STRING.optional(),
+    oboPurchaseOrder: COERCE_STRING.optional(),
+    oboTrackingNumber: COERCE_STRING.optional(),
+    carrier: COERCE_STRING.optional(),
+    oboOrderDatetime: COERCE_STRING.optional(),
+    obtDescription: COERCE_STRING.optional(),
+    cstCode: COERCE_STRING.optional(),
+    cstName: COERCE_STRING.optional(),
+    soldCode: COERCE_STRING.optional(),
+    soldName: COERCE_STRING.optional(),
+    strCode: COERCE_STRING.optional(),
+    strName: COERCE_STRING.optional(),
+    oboOrderDate: COERCE_STRING.optional(),
+    oboState: COERCE_STRING.optional(),
+    oboNote: COERCE_STRING.optional(),
+    oosDescription: COERCE_STRING.optional(),
+    sku: COERCE_STRING,
+    descripcion: COERCE_STRING,
+    ean13: COERCE_STRING.optional(),
+    qtyHandling: z.number(),
+    uomHandling: COERCE_STRING.optional(),
+    qtyOrder: z.number(),
+    uomOrder: COERCE_STRING.optional(),
+    qtyBooked: z.number().optional(),
+    qtyPicked: z.number().optional(),
+    qtyDelivery: z.number().optional(),
+    channel: COERCE_STRING.optional(),
+    division: COERCE_STRING.optional(),
+    qtyContainers: z.number().optional(),
+    oboRemittance: COERCE_STRING.optional(),
+    oboRemittanceDate: COERCE_STRING.optional(),
+    dia: COERCE_STRING.optional(),
+    mes: COERCE_STRING.optional(),
+    anio: COERCE_STRING.optional(),
+    clienteEsp: COERCE_STRING.optional(),
+  })
+);
+
+export const SurtidoInteligenteStockSchema = z.array(
+  z.object({
+    Codigo: COERCE_STRING,
+    LPN: COERCE_STRING,
+    Localizacion: COERCE_STRING,
+    "Area Picking": COERCE_STRING.optional(),
+    SKU: COERCE_STRING,
+    SKU2: COERCE_STRING.optional(),
+    Descripcion: COERCE_STRING,
+    Precio: COERCE_NUMBER.optional(),
+    "Tipo de Material": COERCE_STRING.optional(),
+    "Categoría de Material": COERCE_STRING.optional(),
+    Unidades: COERCE_NUMBER,
+    Cajas: COERCE_NUMBER.optional(),
+    Reserva: COERCE_NUMBER.optional(),
+    Disponible: COERCE_NUMBER,
+    UDM: COERCE_STRING.optional(),
+    Embalaje: COERCE_STRING.optional(),
+    "Fecha de entrada": COERCE_STRING.optional(),
+    Estado: COERCE_STRING,
+    Lote: COERCE_STRING.optional(),
+    "Fecha de fabricacion": COERCE_STRING.optional(),
+    "Fecha de vencimiento": COERCE_STRING.optional(),
+    FPC: COERCE_NUMBER_OPTIONAL,
+    Peso: COERCE_NUMBER.optional(),
+    Serial: COERCE_STRING.optional(),
+  })
+);
+
+// ─────────────────────────────────────────────
+// Maestra de Materiales para Surtido Inteligente
+// ─────────────────────────────────────────────
+export const MaterialMaestraSchema = z.array(
+  z.object({
+    lpn: COERCE_STRING,
+    localizacion: COERCE_STRING,
+    sku: COERCE_STRING,
+    descripcion: COERCE_STRING,
+    tipoMaterial: COERCE_STRING,
+  })
+);
+
+// ─────────────────────────────────────────────
+// Schemas para Exportación de Inventario (Pasillo P10)
+// ─────────────────────────────────────────────
+export const MaestraExportacionSchema = z.array(
+  z.object({
+    Cod: COERCE_STRING,
+    REFERENCIA: COERCE_STRING,
+  })
+);
+
+export const InventarioExportacionSchema = z.array(
+  z.object({
+    Codigo: COERCE_STRING,
+    LPN: COERCE_STRING.optional(),
+    Localizacion: COERCE_STRING,
+  })
+);
+
+export interface ResultadoExportacion {
+  codigo: string;
+  referencia: string;
+  localizacionActual: string | null;
+  estado: string;
+  localizacionSugerida: string | null;
+  sugerencia?: string;
+  lpn?: string | null;
+}
+
+export type MaterialMaestra = z.infer<typeof MaterialMaestraSchema>;
 export type AnalysisResult = z.infer<typeof AnalysisResultSchema>;
 export type InventoryCrossResult = z.infer<typeof InventoryCrossResultSchema>;
 export type LotCrossResult = z.infer<typeof LotCrossResultSchema>;
@@ -318,3 +448,7 @@ export type ShelfLifeResult = z.infer<typeof ShelfLifeResultSchema>;
 export type ExitoLabelsResult = z.infer<typeof ExitoLabelsResultSchema>;
 export type ExitoLabelData = z.infer<typeof ExitoLabelItemSchema>;
 export type ParseExitoExcelResult = z.infer<typeof ParseExitoExcelResultSchema>;
+export type SurtidoInteligenteSalesData = z.infer<typeof SurtidoInteligenteSalesSchema>;
+export type SurtidoInteligenteStockData = z.infer<typeof SurtidoInteligenteStockSchema>;
+export type MaestraExportacion = z.infer<typeof MaestraExportacionSchema>;
+export type InventarioExportacion = z.infer<typeof InventarioExportacionSchema>;

@@ -18,7 +18,6 @@ function findHeaderIndex(headers: string[], possibleHeaders: string[]): number {
       return index;
     }
   }
-
   return -1;
 }
 
@@ -57,9 +56,20 @@ function normalizeDateCell(value: unknown): string {
   return String(value ?? "").trim();
 }
 
-/**
- * Parsea archivos de texto (CSV/TSV).
- */
+function preserveCodeValue(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  
+  if (typeof value === "number") {
+    return String(value);
+  }
+  
+  if (typeof value === "string") {
+    return value.trim();
+  }
+  
+  return String(value).trim();
+}
+
 function parseTextData(
   fileContent: string,
   columnMapping: Record<string, string[]>,
@@ -83,7 +93,6 @@ function parseTextData(
 
   internalKeys.forEach((internalKey) => {
     const foundIndex = findHeaderIndex(headers, columnMapping[internalKey]);
-
     if (foundIndex !== -1) {
       headerIndices[internalKey] = foundIndex;
     }
@@ -108,6 +117,8 @@ function parseTextData(
     );
   }
 
+  const codeFields = ["codigo", "sku", "Codigo", "Cod", "SKU", "material"];
+
   const data = lines
     .slice(1)
     .map((line) => {
@@ -121,6 +132,8 @@ function parseTextData(
 
           if (numericColumns.includes(jsonKey)) {
             value = parseFloat(value.replace(/\./g, "").replace(",", ".")) || 0;
+          } else if (codeFields.includes(jsonKey.toLowerCase())) {
+            value = preserveCodeValue(value);
           }
           record[jsonKey] = value;
         }
@@ -136,20 +149,24 @@ function parseTextData(
   return data;
 }
 
-/**
- * Parsea archivos Excel (.xlsx).
- */
 function parseExcelData(
   fileBuffer: Buffer,
   columnMapping: Record<string, string[]>,
   numericColumns: string[],
 ): Record<string, any>[] {
-  const workbook = XLSX.read(fileBuffer, { type: "buffer", cellDates: true });
+  const workbook = XLSX.read(fileBuffer, { 
+    type: "buffer", 
+    cellDates: true,
+    cellText: true,
+    raw: true
+  });
   const sheetName = workbook.SheetNames[0];
   const worksheet = workbook.Sheets[sheetName];
   const jsonData = XLSX.utils.sheet_to_json(worksheet, {
     header: 1,
     blankrows: false,
+    raw: true,
+    defval: ""
   }) as any[][];
 
   if (jsonData.length < 1) return [];
@@ -163,7 +180,6 @@ function parseExcelData(
     "lote",
   ];
 
-  // Busca la fila de cabecera real (no siempre viene en la primera fila del Excel).
   let headerRowIndex = -1;
   const maxRowsToScan = Math.min(jsonData.length, 200);
 
@@ -176,7 +192,6 @@ function parseExcelData(
 
     internalKeys.forEach((internalKey) => {
       const foundIndex = findHeaderIndex(headers, columnMapping[internalKey]);
-
       if (foundIndex !== -1) {
         candidateIndices[internalKey] = foundIndex;
       } else if (!optionalInternalKeys.includes(internalKey.toLowerCase())) {
@@ -209,6 +224,8 @@ function parseExcelData(
     );
   }
 
+  const codeFields = ["codigo", "sku", "Codigo", "Cod", "SKU", "material"];
+
   const data = jsonData
     .slice(headerRowIndex + 1)
     .map((row) => {
@@ -225,6 +242,8 @@ function parseExcelData(
           } else if (typeof value !== "number") {
             value = 0;
           }
+        } else if (codeFields.includes(jsonKey.toLowerCase())) {
+          value = preserveCodeValue(value);
         } else if (value !== undefined && value !== null) {
           value = String(value).trim();
         } else {
@@ -243,9 +262,6 @@ function parseExcelData(
   return data;
 }
 
-/**
- * Función principal para parsear datos con mapeo predefinido.
- */
 export function parseData(
   content: string | ArrayBuffer,
   columnMapping: Record<string, string[]>,
@@ -259,9 +275,6 @@ export function parseData(
   throw new Error("Tipo de contenido de archivo no compatible.");
 }
 
-/**
- * Función para parsear CUALQUIER archivo y devolver los encabezados y filas crudas.
- */
 export function parseRawData(content: string | ArrayBuffer): {
   headers: string[];
   rows: any[];
@@ -287,7 +300,11 @@ export function parseRawData(content: string | ArrayBuffer): {
   const rows = jsonData.slice(1).map((row) => {
     const record: Record<string, any> = {};
     headers.forEach((header, index) => {
-      record[header] = row[index] !== undefined ? row[index] : "";
+      let value = row[index] !== undefined ? row[index] : "";
+      if (typeof value === "number") {
+        value = String(value);
+      }
+      record[header] = value;
     });
     return record;
   });
