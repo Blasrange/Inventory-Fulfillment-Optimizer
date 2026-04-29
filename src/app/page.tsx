@@ -32,7 +32,6 @@ import {
   generateWmsFiles,
   generateFullReportFile,
   generateInboundExcel,
-  runSurtidoInteligenteAnalysis,
   runSurtidoInteligenteExcel,
   generateExportInventoryExcel,
 } from "@/app/actions";
@@ -573,7 +572,7 @@ export default function Home() {
   }
 }
 
-  // Función mejorada para Surtido Inteligente
+  // 🟢 FUNCIÓN ACTUALIZADA - PROCESAMIENTO LOCAL (SIN SERVIDOR)
   const handleSurtidoInteligenteAnalysisAction = async () => {
     if (!surtidoSalesData || !surtidoInventoryData || !surtidoMaterialMaster) {
       toast({
@@ -586,73 +585,111 @@ export default function Home() {
     }
 
     try {
-      const result = await runSurtidoInteligenteAnalysis(
-        surtidoSalesData,
-        surtidoInventoryData,
-        surtidoMaterialMaster
-      );
-
-      if (result.error) {
-        throw new Error(result.error);
-      }
-
-      if (result.data) {
-        const transformedSuggestions = result.data.suggestions.map((s: any) => ({
-          sku: s.sku || "",
-          descripcion: s.descripcion || "",
-          cantidadVendida: s.cantidadVendida || 0,
-          cantidadVendidaOriginal: s.cantidadVendidaOriginal || s.cantidadVendida || 0,
-          cantidadDisponiblePicking: s.cantidadDisponible || 0,
-          cantidadEnReserva: s.cantidadEnReserva || 0,
-          cantidadARestockear: s.cantidadARestockear || 0,
-          cantidadFaltante: s.cantidadFaltante || 0,
-          ubicacionesSugeridas: (s.ubicacionesSugeridas || []).map((u: any) => ({
-            desde: u.localizacion || "",
-            lpnOrigen: u.lpn || "",
-            hacia: s.localizacionDestino || "",
-            lpnDestino: s.lpnDestino || "",
-            cantidad: u.cantidad || 0,
-            lote: u.lote || "",
-            fechaVencimiento: u.fechaVencimiento || "",
-            esFEFO: true,
-            localizacion: u.localizacion || "",
-          })),
-          ubicacionDestino: s.localizacionDestino || undefined,
-          alerta: s.cantidadFaltante > 0 
-            ? `Faltante: ${s.cantidadFaltante} unidades` 
-            : s.cantidadARestockear > 0 
-              ? `Surtir ${s.cantidadARestockear} unidades` 
+      setIsLoading(true);
+      
+      // Crear mapa de stock para búsqueda rápida
+      const stockMap = new Map();
+      surtidoInventoryData.forEach((item: any) => {
+        const sku = item.sku || item.SKU || item.codigo || item.Codigo || item.Material;
+        if (sku) {
+          const disponible = Number(item.available || item.disponible || item.units || 0);
+          const reserva = Number(item.reserve || item.reserva || 0);
+          stockMap.set(String(sku), { disponible, reserva });
+        }
+      });
+      
+      // Crear mapa de maestra de materiales
+      const masterMap = new Map();
+      surtidoMaterialMaster.forEach((item: any) => {
+        const sku = item.sku || item.SKU || item.codigo || item.Codigo || item.Material;
+        if (sku) {
+          masterMap.set(String(sku), {
+            descripcion: item.descripcion || item.Descripcion || item.desc || item.description || "",
+            ubicacion: item.ubicacion || item.Ubicacion || item.localizacion || ""
+          });
+        }
+      });
+      
+      // Agrupar ventas por SKU
+      const ventasMap = new Map();
+      surtidoSalesData.forEach((item: any) => {
+        const sku = item.sku || item.SKU || item.codigo || item.Codigo || item.Material;
+        const cantidad = Number(item.qtyOrder || item.cantidad || item.cantidadConfirmada || 0);
+        if (sku && cantidad > 0) {
+          ventasMap.set(String(sku), (ventasMap.get(String(sku)) || 0) + cantidad);
+        }
+      });
+      
+      // Generar sugerencias
+      const suggestionsList = [];
+      const missingProductsList = [];
+      
+      for (const [sku, cantidadVendida] of ventasMap) {
+        const stock = stockMap.get(sku) || { disponible: 0, reserva: 0 };
+        const master = masterMap.get(sku) || { descripcion: "", ubicacion: "" };
+        
+        const cantidadDisponible = stock.disponible;
+        const cantidadEnReserva = stock.reserva;
+        const cantidadTotal = cantidadDisponible + cantidadEnReserva;
+        const cantidadARestockear = Math.max(0, cantidadVendida - cantidadDisponible);
+        const cantidadFaltante = Math.max(0, cantidadVendida - cantidadTotal);
+        
+        suggestionsList.push({
+          sku: sku,
+          descripcion: master.descripcion,
+          cantidadVendida: cantidadVendida,
+          cantidadVendidaOriginal: cantidadVendida,
+          cantidadDisponiblePicking: cantidadDisponible,
+          cantidadEnReserva: cantidadEnReserva,
+          cantidadARestockear: cantidadARestockear,
+          cantidadFaltante: cantidadFaltante,
+          ubicacionesSugeridas: [],
+          ubicacionDestino: master.ubicacion || undefined,
+          alerta: cantidadFaltante > 0 
+            ? `Faltante: ${cantidadFaltante} unidades` 
+            : cantidadARestockear > 0 
+              ? `Surtir ${cantidadARestockear} unidades` 
               : undefined,
-          tieneStockSuficiente: s.tieneStockSuficiente !== undefined 
-            ? s.tieneStockSuficiente 
-            : (s.cantidadARestockear === 0 && s.cantidadFaltante === 0),
-          tieneReservaPendiente: (s.cantidadARestockear || 0) > 0,
-          prioridadAlta: s.prioridadAlta || false,
-          existeEnMaestra: !!surtidoMaterialMaster?.find((m: any) => {
-            const skuMaestra = m.sku || m.SKU || m.Material || "";
-            return skuMaestra === s.sku;
-          }),
-          ubicacionMaestra: surtidoMaterialMaster?.find((m: any) => {
-            const skuMaestra = m.sku || m.SKU || m.Material || "";
-            return skuMaestra === s.sku;
-          })?.localizacion || "",
-        }));
-
-        setSurtidoSuggestions(transformedSuggestions);
-        setSuggestions(result.data.suggestions);
-        setMissingProducts(result.data.missingProducts);
-
-        const skusConFaltante = result.data.missingProducts?.length || 0;
-        const skusPendientes = result.data.suggestions.filter((s: any) => s.cantidadARestockear > 0).length;
-
-        toast({
-          title: "✨ Surtido Inteligente Completado",
-          description: `Se analizaron ${result.data.suggestions.length} SKUs. ${skusPendientes} requieren surtido, ${skusConFaltante} con faltante.`,
-          className: "bg-gradient-to-r from-green-300 to-green-400 text-white border-0 shadow-lg",
+          tieneStockSuficiente: cantidadARestockear === 0,
+          tieneReservaPendiente: cantidadARestockear > 0,
+          prioridadAlta: cantidadARestockear > cantidadVendida * 0.5,
+          existeEnMaestra: masterMap.has(sku),
+          ubicacionMaestra: master.ubicacion || ""
         });
         
-        return true;
+        if (cantidadFaltante > 0) {
+          missingProductsList.push({
+            sku: String(sku),
+            descripcion: String(master.descripcion),
+            cantidadVendida: Number(cantidadVendida),
+            cantidadFaltante: Number(cantidadFaltante)
+          });
+        }
       }
+      
+      // Ordenar por prioridad (mayor cantidad a restockear primero)
+      suggestionsList.sort((a, b) => b.cantidadARestockear - a.cantidadARestockear);
+      
+      // Transformar al formato esperado por SurtidoInteligenteView
+      const transformedSuggestions = suggestionsList.map((s: any) => ({
+        ...s,
+        ubicacionesSugeridas: s.ubicacionesSugeridas || []
+      }));
+      
+      setSurtidoSuggestions(transformedSuggestions);
+      setSuggestions(suggestionsList as any);
+      setMissingProducts(missingProductsList);
+      
+      const skusConFaltante = missingProductsList.length;
+      const skusPendientes = suggestionsList.filter((s: any) => s.cantidadARestockear > 0).length;
+      
+      toast({
+        title: "✨ Surtido Inteligente Completado",
+        description: `Se analizaron ${suggestionsList.length} SKUs. ${skusPendientes} requieren surtido, ${skusConFaltante} con faltante.`,
+        className: "bg-gradient-to-r from-green-300 to-green-400 text-white border-0 shadow-lg",
+      });
+      
+      return true;
     } catch (error) {
       console.error("Error en Surtido Inteligente:", error);
       toast({
@@ -662,8 +699,9 @@ export default function Home() {
         className: "bg-gradient-to-r from-red-300 to-red-400 text-white border-0 shadow-lg",
       });
       return false;
+    } finally {
+      setIsLoading(false);
     }
-    return false;
   };
 
   const handleInboundAnalysis = async () => {
@@ -845,28 +883,63 @@ export default function Home() {
 
     let result;
     if (analysisMode === "surtidoInteligente") {
-      result = await runSurtidoInteligenteExcel(
-        surtidoSalesData || [],
-        surtidoInventoryData || [],
-        surtidoMaterialMaster || []
-      );
-      setIsDownloading(false);
-
-      if (result.error) {
+      // Usar los datos locales para generar el Excel
+      if (!surtidoSuggestions) {
         toast({
           variant: "destructive",
           title: "❌ Error",
-          description: result.error,
+          description: "No hay datos para exportar. Ejecuta el análisis primero.",
           className: "bg-gradient-to-r from-red-300 to-red-400 text-white border-0 shadow-lg",
         });
-      } else if (result.file && result.filename) {
-        downloadFile(result.file, result.filename, "application/vnd.ms-excel");
+        setIsDownloading(false);
+        return;
+      }
+      
+      // Generar Excel localmente con los datos de surtidoSuggestions
+      try {
+        // Crear hoja de cálculo simple
+        const rows = [
+          ["SKU", "Descripción", "Ventas", "Stock Disponible", "Stock Reserva", "A Restockear", "Faltante", "Estado"]
+        ];
+        
+        surtidoSuggestions.forEach((s: any) => {
+          rows.push([
+            s.sku,
+            s.descripcion,
+            s.cantidadVendida,
+            s.cantidadDisponiblePicking,
+            s.cantidadEnReserva,
+            s.cantidadARestockear,
+            s.cantidadFaltante,
+            s.tieneStockSuficiente ? "OK" : (s.cantidadFaltante > 0 ? "FALTANTE" : "PENDIENTE")
+          ]);
+        });
+        
+        // Convertir a CSV
+        const csvContent = rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\n");
+        const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `surtido_inteligente_${new Date().toISOString().slice(0, 10)}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+        
         toast({
           title: "📥 Reporte Descargado",
-          description: "El archivo Excel se ha guardado en tu dispositivo",
+          description: "El archivo CSV se ha guardado en tu dispositivo",
           className: "bg-gradient-to-r from-green-300 to-green-400 text-white border-0 shadow-lg",
         });
+      } catch (error) {
+        toast({
+          variant: "destructive",
+          title: "❌ Error",
+          description: "Error al generar el archivo",
+          className: "bg-gradient-to-r from-red-300 to-red-400 text-white border-0 shadow-lg",
+        });
       }
+      
+      setIsDownloading(false);
       return;
     }
 
