@@ -5,6 +5,14 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { randomBytes } from "crypto";
 
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: '20mb', // Ajusta según necesidad
+    },
+  },
+};
+
 function runPowerShellScript(script: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const ps = spawn("powershell", [
