@@ -545,6 +545,7 @@ export async function generateFullReportFile(
         Disponible: item.disponible ?? 0,
         Estado: item.estado || "S/E",
         "Fecha de Entrada": item.fechaEntrada || "S/F",
+        "Fecha de Vencimiento": item.fechaVencimiento || "",
         "Días en Inventario": item.diasEnInventario ?? "S/D",
         "Rango de Antigüedad": item.rangoEdad,
       }));
@@ -1207,29 +1208,25 @@ export async function generateExportInventoryExcel(
   try {
     const maestraValida = MaestraExportacionSchema.parse(maestra);
     const inventarioValido = InventarioExportacionSchema.parse(inventario);
-    
     // Obtener los resultados validados
     const { resultados } = await generarExportacionPasilloP10Excel(maestraValida, inventarioValido);
-    
     // Generar el Excel AQUÍ en actions
     const sheetData = resultados.map((r) => ({
       "Código": r.codigo,
       "Referencia": r.referencia,
       "Ubicación actual": r.localizacionActual || '-',
-      "Estado": r.estado === 'OK' ? 'En pasillo objetivo' : 
-                 r.estado === 'MOVIMIENTO AL PASILLO SUGERIDO' ? 'Mover a pasillo sugerido' : 
-                 'No encontrado',
+      "Estado": r.estado === 'OK' ? 'En pasillo objetivo' :
+        r.estado === 'MOVIMIENTO AL PASILLO SUGERIDO' ? 'Mover a pasillo sugerido' :
+        'No encontrado',
       "Pasillo sugerido": r.localizacionSugerida || '-',
       "Sugerencia": r.estado === 'OK' ? 'No requiere movimiento' :
-                    r.estado === 'MOVIMIENTO AL PASILLO SUGERIDO' ? `Mover a ${r.localizacionSugerida}` :
-                    'No hay stock en inventario',
+        r.estado === 'MOVIMIENTO AL PASILLO SUGERIDO' ? `Mover a ${r.localizacionSugerida}` :
+        'No hay stock en inventario',
     }));
-    
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.json_to_sheet(sheetData);
     XLSX.utils.book_append_sheet(wb, ws, `Validación ${analysisConfig.EXPORT_INVENTORY_TARGET_AISLE}`);
     const file = XLSX.write(wb, { type: "base64", bookType: "xlsx", compression: true });
-    
     return {
       file,
       filename: `Validacion_Pasillo_${analysisConfig.EXPORT_INVENTORY_TARGET_AISLE}_${new Date().toISOString().slice(0, 10)}.xlsx`,
@@ -1239,5 +1236,47 @@ export async function generateExportInventoryExcel(
     return {
       error: `❌ Error en validación o generación de Excel: ${e instanceof Error ? e.message : String(e)}`,
     };
+  }
+}
+/**
+ * Genera el archivo Excel del reporte FEFO a partir de rowsExcel (array de arrays).
+ * @param rowsExcel Array de arrays (incluye encabezados y datos) generado por runFefoReportAnalysis
+ * @returns { file: string; filename: string; error?: string }
+ */
+export async function generateFefoReportExcel(
+  rowsExcel: any[][]
+): Promise<{ file?: string; filename?: string; error?: string }> {
+  try {
+    if (!Array.isArray(rowsExcel) || rowsExcel.length < 2) {
+      return { error: "❌ No hay datos para exportar." };
+    }
+    // Convertir array de arrays a hoja Excel
+    const ws = XLSX.utils.aoa_to_sheet(rowsExcel);
+    // Ajustar ancho de columnas automáticamente
+    const wscols = rowsExcel[0].map((_, colIdx) => {
+      let maxLength = 10;
+      for (let rowIdx = 0; rowIdx < rowsExcel.length; rowIdx++) {
+        const cell = rowsExcel[rowIdx][colIdx];
+        if (cell && String(cell).length > maxLength) {
+          maxLength = String(cell).length;
+        }
+      }
+      return { wch: Math.min(maxLength + 2, 40) };
+    });
+    ws["!cols"] = wscols;
+    // Crear libro y agregar hoja
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Reporte FEFO");
+    // Generar archivo base64
+    const file = XLSX.write(wb, {
+      type: "base64",
+      bookType: "xlsx",
+      compression: true,
+    });
+    // Nombre de archivo con fecha
+    const filename = `reporte_fefo_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    return { file, filename };
+  } catch (e: any) {
+    return { error: `❌ Error al generar el archivo FEFO: ${e instanceof Error ? e.message : String(e)}` };
   }
 }
