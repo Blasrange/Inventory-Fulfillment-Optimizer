@@ -94,6 +94,13 @@ const inventoryAgeFlow = ai.defineFlow(
           entryUtc === null ? null : Math.max(0, Math.floor((todayUtc - entryUtc) / MS_PER_DAY));
         const ageBucket = getAgeBucket(daysInInventory);
 
+        // Analizar fecha de vencimiento (si existe)
+        let parsedExpiryDate: string | null = null;
+        if (item.fechaVencimiento) {
+          const parsed = parseInventoryDate(item.fechaVencimiento);
+          parsedExpiryDate = parsed ? parsed.toISOString().split("T")[0] : String(item.fechaVencimiento);
+        }
+
         return {
           sku: item.sku,
           descripcion: item.descripcion,
@@ -107,6 +114,7 @@ const inventoryAgeFlow = ai.defineFlow(
             : item.fechaEntrada || "",
           diasEnInventario: daysInInventory,
           rangoEdad: ageBucket,
+          fechaVencimiento: parsedExpiryDate,
         };
       })
       .sort((a, b) => {
